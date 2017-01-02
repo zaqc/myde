@@ -27,9 +27,9 @@ always_ff @ (posedge clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		rdy <= 1'b0;
 	else
-		if(new_start != state)
+		if(new_state != state)
 			rdy <= (new_state == STATE_IDLE) ? 1'b1 : 1'b0;
-			else rdy <= 1
+			else rdy <= 1;
 
 // ===========================================================================
 // PARAMETERS
@@ -74,7 +74,8 @@ assign data_push_out = (ds_cnt == ds_len) ? 1'b1 : 1'b0;
 always_comb begin
 	new_state = state;
 	case(state)
-		STATE_IDLE: if(1'b1 == rst_n && send_flag == 1'b1) new_state = SEND_PREAMBLE;
+		STATE_IDLE: if(1'b1 == rst_n 
+			&& send_flag == 1'b1 && i_enable == 1'b1) new_state = SEND_PREAMBLE;
 		SEND_PREAMBLE: if(data_push_out) new_state = SEND_DST_MAC;
 		SEND_DST_MAC: if(data_push_out) new_state = SEND_SRC_MAC;
 		SEND_SRC_MAC: if(data_push_out) new_state = SEND_ETHER_TYPE;

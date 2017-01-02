@@ -1,4 +1,4 @@
-module eth_recv(
+module eth_recv_arp(
 	input					clk,
 	input					rst_n,
 	input					i_data_vl,
@@ -124,15 +124,15 @@ always @ (*) begin
 			end
 		
 		eth_dst_mac:
-			if(rxb_count == 8'd5)
+			if(rxb_count == 8'd6)
 				new_state = eth_src_mac;
 
 		eth_src_mac:
-			if(rxb_count == 8'd5)
+			if(rxb_count == 8'd6)
 				new_state = eth_frame_type;
 
 		eth_frame_type:
-			if(rxb_count == 8'd1)
+			if(rxb_count == 8'd2)
 				if(ds[15:0] == 16'h0806)
 					new_state = eth_arp_header;
 				else //if(ds[15:0] == 16'h0800)
@@ -140,31 +140,31 @@ always @ (*) begin
 					
 		// ARP Request decode
 		eth_arp_header:
-			if(rxb_count == 8'd7)
+			if(rxb_count == 8'd8)
 				new_state = eth_arp_SHA;
 				
 		eth_arp_SHA:
-			if(rxb_count == 8'd5)
+			if(rxb_count == 8'd6)
 				new_state = eth_arp_SPA;
 				
 		eth_arp_SPA:
-			if(rxb_count == 8'd3)
+			if(rxb_count == 8'd4)
 				new_state = eth_arp_THA;
 				
 		eth_arp_THA:
-			if(rxb_count == 8'd5)
+			if(rxb_count == 8'd6)
 				new_state = eth_arp_TPA;
 				
 		eth_arp_TPA:
-			if(rxb_count == 8'd3)
+			if(rxb_count == 8'd4)
 				new_state = eth_paket_end;
 				
 		eth_paket_end:
-			if(rxb_count == 8'd17)
+			if(rxb_count == 8'd18)
 				new_state = eth_crc32;
 			
 		eth_crc32:
-			if(rxb_count == 8'd3) begin
+			if(rxb_count == 8'd4) begin
 				new_state = eth_crc_ok;
 				if(crc_ok == 8'h03)
 					new_state = eth_crc_ok;
@@ -173,19 +173,19 @@ always @ (*) begin
 			end
 				
 		eth_crc_ok:
-			if(rxb_count == 8'd0)			// CRC 32 OK
+			//if(rxb_count == 8'd1)			// CRC 32 OK
 				new_state = eth_preamble;
 				
 		eth_crc_err:
-			if(rxb_count == 8'd0)			// CRC 32 ERROR
+			//if(rxb_count == 8'd1)			// CRC 32 ERROR
 				new_state = eth_preamble;
 				
 		eth_src_ip:
-			if(rxb_count == 8'd3)
+			if(rxb_count == 8'd4)
 				new_state = eth_dst_ip;
 				
 		eth_dst_ip:
-			if(rxb_count == 8'd3)
+			if(rxb_count == 8'd4)
 				new_state = eth_crc32;
 								
 		eth_data_stream:
@@ -206,7 +206,10 @@ always @ (posedge clk or negedge rst_n)
 		rxb_count <= 8'd0;
 	else
 		if(new_state != state)
-			rxb_count <= 8'd0;
+			if(i_data_vl == 1'b1)
+				rxb_count <= 8'd1;
+			else
+				rxb_count <= 8'd0;
 		else
 			if(i_data_vl == 1'b1)
 				rxb_count <= rxb_count + 8'd1;

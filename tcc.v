@@ -75,16 +75,43 @@ rx_ddio rx(
 
 wire		[7:0]		in_dbg_data;
 wire					in_dbg_data_vl;
-eth_recv U_eth_recv(
+//eth_recv_arp eth_recv_arp_U1(
+//	.rst_n(KEY[0]),
+//	.clk(pll_clk_rx),
+//	
+//	.i_data(rx_in_data),
+//	.i_data_vl(rx_dv),
+//	
+//	.o_dbg_data_vl(in_dbg_data_vl),
+//	.o_dbg_data(in_dbg_data)
+//);
+
+wire		[1:0]		pkt_type;
+wire		[47:0]	SHA;
+wire		[31:0]	SPA;
+wire		[47:0]	THA;
+wire		[31:0]	TPA;
+
+eth_recv eth_recv_U1(
 	.rst_n(KEY[0]),
 	.clk(pll_clk_rx),
 	
 	.i_data(rx_in_data),
 	.i_data_vl(rx_dv),
 	
-	.o_dbg_data_vl(in_dbg_data_vl),
-	.o_dbg_data(in_dbg_data)
+	.i_self_mac(src_mac),
+	.i_self_ip(src_ip),
+	
+	.o_data_vl(in_dbg_data_vl),
+	.o_data(in_dbg_data),
+	
+	.o_pkt_type(pkt_type),
+	.o_SHA(SHA),
+	.o_SPA(SPA),
+	.o_THA(THA),
+	.o_TPA(TPA)
 );
+
 
 reg		[0:0]		prev_rx_dv;
 always @ (posedge pll_clk_rx)
@@ -132,33 +159,58 @@ pack_gen pg_U(
 );
 */
 
-//udp_pkt_gen gen_U(
-//	.clk(pll_clk_tx), //pll_gtx_clk),
-//	.rst_n(KEY[0]),
-//	.o_data(tx_out_data),
-//	.tx_en(tx_en)
-//);
+//reg [0:0] send_udp_pkt;
+//initial send_udp_pkt = 1'b1;
+//
+//wire udp_enable;
+//assign udp_enable = send_udp_pkt;
+//wire udp_ready;
+//
+//wire arp_enable;
+//assign arp_enable = ~send_udp_pkt;
+//wire arp_ready;
+//
+//always @ (posedge clk) begin
+//	if(udp_ready == 1'b1 && send_udp_pkt == 1'b1)
+//		send_udp_pkt = 1'b0;
+//	else 
+//		if(arp_ready == 1'b0 && send_udp_pkt == 1'b0)
+//			send_udp_pkt = 1'b1;
+//end
+//
+udp_pkt_gen gen_U(
+	.clk(pll_clk_tx), //pll_gtx_clk),
+	.rst_n(KEY[0]),
+	.o_data(tx_out_data),
+	.tx_en(tx_en)
+	
+//	.i_enable(udp_enable),
+//	.o_ready(udp_ready)
+);
 
 parameter	[47:0]	src_mac = {8'h00, 8'h23, 8'h54, 8'h3C, 8'h47, 8'h1B};
 parameter	[47:0]	dst_mac = {8'h0c, 8'h54, 8'ha5, 8'h31, 8'h24, 8'h85};
 parameter	[31:0]	src_ip = {8'h0A, 8'h00, 8'h00, 8'h21};	//{8'hC0, 8'hA8, 8'h4D, 8'h21};
 parameter	[31:0]	dst_ip = {8'h0A, 8'h00, 8'h00, 8'h02};
 
-arp_send arp_send_U1(
-	.clk(pll_clk_tx), //pll_gtx_clk),
-	.rst_n(KEY[0]),
-	.o_data(tx_out_data),
-	.o_tx_en(tx_en),
-	
-	.i_dst_mac(48'hFFFFFFFFFFFF),
-	.i_src_mac(src_mac),
-	
-	.i_operation(2'b01),
-	.i_SHA(src_mac),
-	.i_SPA(src_ip),
-	.i_THA(48'd0),
-	.i_TPA(dst_ip)
-);
+//arp_send arp_send_U1(
+//	.clk(pll_clk_tx), //pll_gtx_clk),
+//	.rst_n(KEY[0]),
+//	.o_data(tx_out_data),
+//	.o_tx_en(tx_en),
+//	
+//	.i_dst_mac(48'hFFFFFFFFFFFF),
+//	.i_src_mac(src_mac),
+//	
+//	.i_operation(2'b01),
+//	.i_SHA(src_mac),
+//	.i_SPA(src_ip),
+//	.i_THA(48'd0),
+//	.i_TPA(dst_ip),
+//	
+//	.i_enable(arp_enable),
+//	.o_ready(arp_ready)
+//);
 
 
 reg	[15:0]	pkt_counter;

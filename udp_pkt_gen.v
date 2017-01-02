@@ -4,17 +4,21 @@ module udp_pkt_gen(
 	output	[7:0]		o_data,
 	output reg			tx_en,
 
-	output 	[31:0]	crc_out
+	output 	[31:0]	crc_out,
+	
+	input					i_enable,	// start send frame
+	output				o_ready		// set when frame transfer complite
 );
 
 // ===========================================================================
 // input array
 // ===========================================================================
-reg	[7:0]		in_data[0:18];
+reg	[7:0]		in_data[0:1500];
 reg	[15:0]	in_data_len;
 reg	[15:0]	in_data_cntr;
+integer i;
 initial begin
-	in_data_len = 17;
+	in_data_len = 16'd1040;	// default: 18
 	in_data[0] = 8'h01;
 	in_data[1] = 8'h02;
 	in_data[2] = 8'h03;
@@ -33,6 +37,7 @@ initial begin
 	in_data[15] = 8'h34;
 	in_data[16] = 8'h56;
 	in_data[17] = 8'h78;
+	for(i = 18; i < 1500; i = i + 1) in_data[i] = i;
 end
 
 // ===========================================================================
@@ -51,7 +56,8 @@ parameter	[15:0]	dst_port = {8'hC3, 8'h60};
 parameter	[3:0]		ip_header_ver = 4'h4;		// 4 - for IPv4
 parameter	[3:0]		ip_header_size = 4'h5;		// size in 32bit word's
 parameter	[7:0]		ip_DSCP_ECN = 8'h00;			// ?
-parameter	[15:0]	ip_pkt_size = 16'h002E;		// size of UDP packet
+wire			[15:0]	ip_pkt_size;
+assign  ip_pkt_size = in_data_len + 16'h001C;	// 16'h002E size of UDP packet
 wire			[31:0]	ip_hdr1;
 assign ip_hdr1 = {ip_header_ver, ip_header_size, ip_DSCP_ECN, ip_pkt_size};
 
@@ -101,12 +107,18 @@ parameter	[4:0]		eth_data_stream = 5'd14;
 parameter	[4:0]		eth_crc32 = 5'd15;
 
 // ===========================================================================
+// DATA GENERATOR
+// ===========================================================================
+reg			[7:0]		bc;
+always @ (posedge clk) bc <= bc + 8'd1;
+
+// ===========================================================================
 // SHIFTER & SENDER
 // ===========================================================================
 reg	[47:0]	data_ts;
 reg	[3:0]		cnt_ts;
 reg	[47:0]	send_data;
-assign o_data = (state == eth_crc32) ? crc32[7:0] : ((state == eth_data_stream) ? in_data[in_data_cntr] : send_data[47:40]);
+assign o_data = (state == eth_crc32) ? crc32[7:0] : ((state == eth_data_stream) ? bc /* in_data[in_data_cntr] */ : send_data[47:40]);
 reg	[3:0]	send_cnt;
 reg	[3:0]	send_len;
 always @ (posedge clk or negedge rst_n) begin
@@ -124,11 +136,13 @@ always @ (posedge clk or negedge rst_n) begin
 			else
 				send_len <= 4'd0;
 			
-			if(new_state == eth_udp_len_crc)
-				udp_length <= 14'h001A;
+			if(new_state == eth_udp_len_crc) begin
+				udp_length <= in_data_len + 16'd8; //14'h001A;
+				udp_crc <= 16'd0;
+			end
 				
 			if(new_state == eth_data_stream)
-					in_data_cntr <= 16'd0;
+					in_data_cntr <= 16'd1;
 					
 //			if(new_state == eth_crc32) begin
 //				send_data <= { crc32, 16'd0 };
