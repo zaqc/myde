@@ -1,21 +1,35 @@
 module arp_send(
-	input				clk,
-	input				rst_n,
+	input						clk,
+	input						rst_n,
 	
-	output	[7:0]		o_data,
-	output reg			o_tx_en,
+	output	[7:0]			o_data,
+	output reg				o_tx_en,
 
-	output	[31:0]	o_crc32,
+	output	[31:0]		o_crc32,
 	
-	input 	[47:0]	i_dst_mac,
-	input		[47:0]	i_src_mac,
+	input 	[47:0]		i_dst_mac,
+	input		[47:0]		i_src_mac,
 	
-	input		[1:0]		i_operation,
-	input		[47:0]	i_SHA,
-	input		[31:0]	i_SPA,
-	input		[47:0]	i_THA,
-	input		[31:0]	i_TPA
+	input		[1:0]			i_operation,
+	input		[47:0]		i_SHA,
+	input		[31:0]		i_SPA,
+	input		[47:0]		i_THA,
+	input		[31:0]		i_TPA,
+	
+	input						i_enable,	// start send frame
+	output					o_ready		// set when frame transfer complite
 );
+
+reg			[0:0]			rdy;
+assign o_ready = rdy;
+
+always_ff @ (posedge clk or negedge rst_n)
+	if(1'b0 == rst_n)
+		rdy <= 1'b0;
+	else
+		if(new_start != state)
+			rdy <= (new_state == STATE_IDLE) ? 1'b1 : 1'b0;
+			else rdy <= 1
 
 // ===========================================================================
 // PARAMETERS
@@ -30,19 +44,21 @@ assign arp_header = {ARP_HTYPE, ARP_PTYPE, ARP_HLEN, ARP_PLEN, {14'd0, i_operati
 // ===========================================================================
 // STATE MACHINE
 // ===========================================================================
-enum logic [4:0] {
-	STATE_IDLE = 5'd0,
-	SEND_PREAMBLE = 5'd1,
-	SEND_DST_MAC = 5'd2,
-	SEND_SRC_MAC = 5'd3,
-	SEND_ETHER_TYPE = 5'd4,
-	SEND_ARP_HEADER = 5'd5,
-	SEND_SHA = 5'd6,
-	SEND_SPA = 5'd7,
-	SEND_THA = 5'd8,
-	SEND_TPA = 5'd9,
-	SEND_DUMMY_BYTES = 5'd10,
-	SEND_CRC32 = 5'd11
+enum logic [3:0] {
+	STATE_IDLE = 4'd0,
+	SEND_PREAMBLE = 4'd1,
+	SEND_DST_MAC = 4'd2,
+	SEND_SRC_MAC = 4'd3,
+	SEND_ETHER_TYPE = 4'd4,
+	SEND_ARP_HEADER = 4'd5,
+	SEND_SHA = 4'd6,
+	SEND_SPA = 4'd7,
+	SEND_THA = 4'd8,
+	SEND_TPA = 4'd9,
+	SEND_DUMMY_BYTES = 4'd10,
+	SEND_CRC32 = 4'd11,
+	DELAY = 4'd12,
+	SET_READY = 4'd13
 } state, new_state;
 
 always_ff @ (posedge clk or negedge rst_n) begin
@@ -73,7 +89,7 @@ always_comb begin
 	endcase
 end
 
-assign o_tx_en = (state == STATE_IDLE) ? 1'b0 : 1'b1;
+assign o_tx_en = (state != STATE_IDLE && state < DELAY) ? 1'b1 : 1'b0;
 
 // ===========================================================================
 //	DELAY for PACKET SEND
@@ -105,8 +121,8 @@ end
 assign o_data = (state == SEND_CRC32) ? crc32[7:0] : ds[63:56];
 
 reg			[63:0]		ds;
-reg			[10:0]		ds_cnt;
-reg			[10:0]		ds_len;
+reg			[4:0]			ds_cnt;
+reg			[4:0]			ds_len;
 always_ff @ (posedge clk or negedge rst_n) begin
 	if(rst_n == 1'b0) begin
 		ds <= 64'd0;
@@ -117,47 +133,47 @@ always_ff @ (posedge clk or negedge rst_n) begin
 		if(new_state != state) begin
 			case(new_state)
 				SEND_PREAMBLE: begin
-					ds_len <= 11'd8;
+					ds_len <= 5'd8;
 					ds <= 64'h55555555555555d5;
 				end
 				SEND_DST_MAC: begin
-					ds_len <= 11'd6;
+					ds_len <= 5'd6;
 					ds <= {i_dst_mac, 16'd0};
 				end
 				SEND_SRC_MAC: begin
-					ds_len <= 11'd6;
+					ds_len <= 5'd6;
 					ds <= {i_src_mac, 16'd0};
 				end
 				SEND_ETHER_TYPE: begin
-					ds_len <= 11'd2;
+					ds_len <= 5'd2;
 					ds <= {16'h0806, 48'd0};	// ARP frame
 				end
 				SEND_ARP_HEADER: begin
-					ds_len <= 11'd8;
+					ds_len <= 5'd8;
 					ds <= arp_header;
 				end
 				SEND_SHA: begin
-					ds_len <= 11'd6;
+					ds_len <= 5'd6;
 					ds <= {i_SHA, 16'd0};
 				end
 				SEND_SPA: begin
-					ds_len <= 11'd4;
+					ds_len <= 5'd4;
 					ds <= {i_SPA, 32'd0};
 				end
 				SEND_THA: begin
-					ds_len <= 11'd6;
+					ds_len <= 5'd6;
 					ds <= {i_THA, 16'd0};
 				end
 				SEND_TPA: begin
-					ds_len <= 11'd4;
+					ds_len <= 5'd4;
 					ds <= {i_TPA, 32'd0};
 				end
 				SEND_DUMMY_BYTES: begin
-					ds_len <= 11'd18;
+					ds_len <= 5'd18;
 					ds <= 64'd0;
 				end
 				SEND_CRC32: begin
-					ds_len <= 11'd4;
+					ds_len <= 5'd4;
 					ds <= 64'd0;
 				end
 			endcase
@@ -166,7 +182,7 @@ always_ff @ (posedge clk or negedge rst_n) begin
 		else begin
 			if(!data_push_out) begin
 				ds <= {ds[55:0], 8'h00};
-				ds_cnt <= ds_cnt + 11'd1;
+				ds_cnt <= ds_cnt + 5'd1;
 			end 
 		end
 	end
