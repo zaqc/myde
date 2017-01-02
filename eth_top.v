@@ -29,6 +29,7 @@ wire			[47:0]	tgMAC = (state == send_arp_response) ? reqMAC : broadcastMAC;
 wire			[47:0]	tgIP = (state == send_arp_response) ? reqIP : clientIP;
 wire			[1:0]		arp_pkt_type = (state == send_arp_request) ? 2'd1 : (state == send_arp_response) ? 2'd2 : 2'd0;
 
+/*
 arp_send u_arp_send(
 	.rst_n(rst_n),
 	.clk(clk),
@@ -38,7 +39,7 @@ arp_send u_arp_send(
 	.o_arp_THA(tdMAC),
 	.o_arp_TPA(tgIP)
 );
-
+*/
 
 parameter	[4:0]		state_none = 5'd0;
 
