@@ -28,8 +28,7 @@ always_ff @ (posedge clk or negedge rst_n)
 		rdy <= 1'b0;
 	else
 		if(new_state != state)
-			rdy <= (new_state == STATE_IDLE) ? 1'b1 : 1'b0;
-			else rdy <= 1;
+			rdy <= (new_state == SET_READY) ? 1'b1 : 1'b0;
 
 // ===========================================================================
 // PARAMETERS
@@ -75,7 +74,7 @@ always_comb begin
 	new_state = state;
 	case(state)
 		STATE_IDLE: if(1'b1 == rst_n 
-			&& send_flag == 1'b1 && i_enable == 1'b1) new_state = SEND_PREAMBLE;
+			/*&& send_flag == 1'b1 */&& i_enable == 1'b1) new_state = SEND_PREAMBLE;
 		SEND_PREAMBLE: if(data_push_out) new_state = SEND_DST_MAC;
 		SEND_DST_MAC: if(data_push_out) new_state = SEND_SRC_MAC;
 		SEND_SRC_MAC: if(data_push_out) new_state = SEND_ETHER_TYPE;
@@ -86,7 +85,9 @@ always_comb begin
 		SEND_THA: if(data_push_out) new_state = SEND_TPA;
 		SEND_TPA: if(data_push_out) new_state = SEND_DUMMY_BYTES;
 		SEND_DUMMY_BYTES: if(data_push_out) new_state = SEND_CRC32;
-		SEND_CRC32: if(data_push_out) new_state = STATE_IDLE;
+		SEND_CRC32: if(data_push_out) new_state = DELAY;
+		DELAY: if(data_push_out) new_state = SET_READY;
+		SET_READY: new_state = STATE_IDLE;
 	endcase
 end
 
@@ -175,6 +176,10 @@ always_ff @ (posedge clk or negedge rst_n) begin
 				end
 				SEND_CRC32: begin
 					ds_len <= 5'd4;
+					ds <= 64'd0;
+				end
+				DELAY: begin
+					ds_len <= 5'd50;
 					ds <= 64'd0;
 				end
 			endcase

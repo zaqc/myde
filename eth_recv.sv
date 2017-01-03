@@ -128,14 +128,18 @@ always_comb begin
 			
 		RECV_IP_HDR1: if(rx_count == 11'd4) new_state = RECV_IP_HDR2;
 		RECV_IP_HDR2: if(rx_count == 11'd4) new_state = RECV_IP_HDR3;
-		RECV_IP_HDR3: if(rx_count == 11'd4) new_state = RECV_IP_SRC_IP;
+		RECV_IP_HDR3: if(rx_count == 11'd4) 
+			case(ip_pkt_type)
+				8'd17: new_state = RECV_IP_SRC_IP; // UDP
+				default: new_state = STATE_IDLE;
+			endcase
 		RECV_IP_SRC_IP: if(rx_count == 11'd4) new_state = RECV_IP_DST_IP;
 		RECV_IP_DST_IP: if(rx_count == 11'd4) new_state = RECV_UDP_SRC_PORT;
 		RECV_UDP_SRC_PORT: if(rx_count == 11'd2) new_state = RECV_UDP_DST_PORT;
 		RECV_UDP_DST_PORT: if(rx_count == 11'd2) new_state = RECV_UDP_LEN;
 		RECV_UDP_LEN: if(rx_count == 11'd2) new_state = RECV_UDP_CRC;
 		RECV_UDP_CRC: if(rx_count == 11'd2) new_state = RECV_UDP_DATA;
-		RECV_UDP_DATA: if(rx_count == udp_len) new_state = RECV_CRC32;
+		RECV_UDP_DATA: if(rx_count == udp_len[10:0] - 11'd8) new_state = RECV_CRC32;
 
 		RECV_ARP_HEADER: if(rx_count == 11'd8)  new_state = RECV_ARP_SHA;
 		RECV_ARP_SHA: if(rx_count == 11'd6)  new_state = RECV_ARP_SPA;
@@ -162,11 +166,14 @@ always_ff @ (posedge clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		rx_count <= 11'd0;
 	else
-		if(new_state != state) 
-			rx_count <= (1'b1 == i_data_vl) ? 11'd1 : 11'd0;
+		if(state == STATE_IDLE)
+			rx_count <= 11'd0;
 		else
-			if(1'b1 == i_data_vl)
-				rx_count <= rx_count + 11'd1;
+			if(new_state != state) 
+				rx_count <= (1'b1 == i_data_vl) ? 11'd1 : 11'd0;
+			else
+				if(1'b1 == i_data_vl)
+					rx_count <= rx_count + 11'd1;
 				
 //----------------------------------------------------------------------------
 				
@@ -174,8 +181,11 @@ always_ff @ (posedge clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		rx <= 64'd0;
 	else
-		if(1'b1 == i_data_vl)
-				rx <= {rx[55:0], i_data};
+		if(state == STATE_IDLE)
+			rx <= 64'd0;
+		else
+			if(1'b1 == i_data_vl)
+					rx <= {rx[55:0], i_data};
 
 // ===========================================================================
 // STORE DATA TO REG'S
@@ -299,13 +309,16 @@ assign o_crc_flag = calc_crc_flag;
 always_ff @ (posedge clk or negedge rst_n) begin
 	if(1'b0 == rst_n)
 		calc_crc_flag <= 1'b0;
-	else 
-		if(state == RECV_PREAMBLE && rx[55:0] == 56'h55555555555555 && i_data == 8'hD5 && i_data_vl == 1'b1)
-			calc_crc_flag <= 1'b1;
-		else if((i_data_vl == 1'b1) &&	
-					((state == RECV_ARP_DUMMY && rx_count == 11'd17) || 
-					 (state == RECV_UDP_DATA && rx_count == udp_len - 11'd1)))
+	else
+		if(state == STATE_IDLE)
 			calc_crc_flag <= 1'b0;
+		else
+			if(state == RECV_PREAMBLE && rx[55:0] == 56'h55555555555555 && i_data == 8'hD5 && i_data_vl == 1'b1)
+				calc_crc_flag <= 1'b1;
+			else if((i_data_vl == 1'b1) &&	
+						((state == RECV_ARP_DUMMY && rx_count == 11'd17) || 
+						 (state == RECV_UDP_DATA && rx_count == udp_len[10:0] - 11'd8)))
+				calc_crc_flag <= 1'b0;
 end
 
 //----------------------------------------------------------------------------

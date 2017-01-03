@@ -10,6 +10,8 @@ module udp_pkt_gen(
 	output				o_ready		// set when frame transfer complite
 );
 
+assign o_ready = (new_state == eth_preamble) ? 1'b1 : 1'b0;
+
 // ===========================================================================
 // input array
 // ===========================================================================
