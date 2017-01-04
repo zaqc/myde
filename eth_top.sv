@@ -197,7 +197,7 @@ always_ff @ (posedge eth_rx_clk or negedge rst_n)
 			case(recv_pkt_type)
 				eth_recv.UDP: udp_cntr <= udp_cntr + 9'd1;
 				eth_recv.ARP_REQ: begin
-					if(/*recv_THA == self_mac &&*/ recv_TPA == self_ip) begin
+					if(recv_THA == self_mac && recv_TPA == self_ip) begin
 						arp_req_cntr <= arp_req_cntr + 9'd1;
 					end
 				end

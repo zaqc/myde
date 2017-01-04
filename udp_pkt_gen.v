@@ -10,7 +10,7 @@ module udp_pkt_gen(
 	output				o_ready		// set when frame transfer complite
 );
 
-assign o_ready = (new_state == eth_preamble) ? 1'b1 : 1'b0;
+// assign o_ready = (new_state == eth_preamble) ? 1'b1 : 1'b0;
 
 // ===========================================================================
 // input array
@@ -92,21 +92,24 @@ reg			[15:0]	udp_crc;
 
 // SM state's
 parameter	[4:0]		eth_none = 5'd0;			// none
-parameter	[4:0]		eth_preamble = 5'd1;		// send 0x55 seven times
-parameter	[4:0]		eth_sdf = 5'd2;				// send end of preamble 0x5D
-parameter	[4:0]		eth_dst_mac = 5'd3;		// send destination MAC Address
-parameter	[4:0]		eth_src_mac = 5'd4;		// send self MAC Address
-parameter	[4:0]		eth_type = 5'd5;			// send 0x0800
-parameter	[4:0]		eth_hdr1 = 5'd6;
-parameter	[4:0]		eth_hdr2 = 5'd7;
-parameter	[4:0]		eth_hdr3 = 5'd8;
-parameter	[4:0]		eth_src_ip = 5'd9;
-parameter	[4:0]		eth_dst_ip = 5'd10;
-parameter	[4:0]		eth_udp_src_dst_port = 5'd11;
-parameter	[4:0]		eth_udp_len_crc = 5'd12;
-parameter	[4:0]		eth_wait = 5'd13;
-parameter	[4:0]		eth_data_stream = 5'd14;
-parameter	[4:0]		eth_crc32 = 5'd15;
+parameter	[4:0]		eth_idle = 5'd1;
+parameter	[4:0]		eth_preamble = 5'd2;		// send 0x55 seven times
+parameter	[4:0]		eth_sdf = 5'd3;				// send end of preamble 0x5D
+parameter	[4:0]		eth_dst_mac = 5'd4;		// send destination MAC Address
+parameter	[4:0]		eth_src_mac = 5'd5;		// send self MAC Address
+parameter	[4:0]		eth_type = 5'd6;			// send 0x0800
+parameter	[4:0]		eth_hdr1 = 5'd7;
+parameter	[4:0]		eth_hdr2 = 5'd8;
+parameter	[4:0]		eth_hdr3 = 5'd9;
+parameter	[4:0]		eth_src_ip = 5'd10;
+parameter	[4:0]		eth_dst_ip = 5'd11;
+parameter	[4:0]		eth_udp_src_dst_port = 5'd12;
+parameter	[4:0]		eth_udp_len_crc = 5'd13;
+parameter	[4:0]		eth_wait = 5'd14;
+parameter	[4:0]		eth_data_stream = 5'd15;
+parameter	[4:0]		eth_crc32 = 5'd16;
+parameter	[4:0]		eth_done = 5'd17;
+parameter	[4:0]		enable_rise = 5'd18;
 
 // ===========================================================================
 // DATA GENERATOR
@@ -179,8 +182,10 @@ always @ (*) begin
 	new_state = state;
 
 	case(state)
-		eth_none:
-			if(1'b0 != rst_n) begin
+		eth_none: if(1'b0 != rst_n) new_state = eth_idle;
+			
+		eth_idle:
+			if(1'b1 != i_enable) begin
 				new_state = eth_preamble;
 				data_ts = 48'd0;
 				cnt_ts = 4'd0;
@@ -284,20 +289,41 @@ always @ (*) begin
 			
 		eth_crc32:
 			if(send_cnt == send_len) begin
-				new_state = 5'd16;
+				new_state = eth_done;
 				data_ts = 48'h000000000000;
 				cnt_ts = 4'd4;
 			end
 			
-		5'd16:
-			if(pause_cntr == 32'h07735940) begin
-				new_state = eth_preamble;
+		eth_done:
+			if(pause_cntr == 32'h07735940) begin	// 1 sec
+				new_state = enable_rise;
 				data_ts = 48'h000000000000;
 				cnt_ts = 4'd6;
 			end
+			
+		enable_rise: if(1'b0 == i_enable) new_state = eth_idle;
 	endcase
 end
 
+// ===========================================================================
+// READY
+// ===========================================================================
+
+reg		[0:0]			rdy;
+always @ (posedge clk or negedge rst_n)
+	if(1'b0 == rst_n)
+		rdy <= 1'b0;
+	else
+		if(new_state != state) begin
+			if(new_state == eth_idle)
+				rdy <= 1'b1;
+			else
+				if(new_state == eth_preamble)
+					rdy <= 1'b0;
+		end
+		
+assign o_ready = rdy;
+		
 // ===========================================================================
 // Pkt pause counter
 // ===========================================================================
@@ -306,7 +332,7 @@ always @ (posedge clk or negedge rst_n) begin
 	if(1'b0 == rst_n)
 		pause_cntr <= 32'd0;
 	else begin
-		if((new_state != state) && (new_state == 5'd16)) 
+		if((new_state != state) && (new_state == eth_done)) 
 			pause_cntr <= 32'd0;
 		else 
 			pause_cntr <= pause_cntr + 32'd1;
@@ -324,7 +350,7 @@ always @ (posedge clk or negedge rst_n) begin
 			if(new_state == eth_sdf)
 				tx_en <= 1'b1;
 			else 
-				if(new_state == 5'd16)
+				if(new_state == eth_done)
 					tx_en <= 1'b0;
 		end
 end

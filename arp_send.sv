@@ -96,28 +96,6 @@ always_comb begin
 		SET_READY: if(i_enable == 1'b0) new_state = STATE_IDLE;
 	endcase
 end
-/*
-always_comb begin
-	new_state = state;
-	case(state)
-		NONE: if(1'b0 != rst_n) new_state = STATE_IDLE;
-		STATE_IDLE: if(i_enable == 1'b1) new_state = SEND_PREAMBLE;
-		SEND_PREAMBLE: if(data_push_out) new_state = SEND_DST_MAC;
-		SEND_DST_MAC: if(data_push_out) new_state = SEND_SRC_MAC;
-		SEND_SRC_MAC: if(data_push_out) new_state = SEND_ETHER_TYPE;
-		SEND_ETHER_TYPE: if(data_push_out) new_state = SEND_ARP_HEADER;
-		SEND_ARP_HEADER: if(data_push_out) new_state = SEND_SHA;
-		SEND_SHA: if(data_push_out) new_state = SEND_SPA;
-		SEND_SPA: if(data_push_out) new_state = SEND_THA;
-		SEND_THA: if(data_push_out) new_state = SEND_TPA;
-		SEND_TPA: if(data_push_out) new_state = SEND_DUMMY_BYTES;
-		SEND_DUMMY_BYTES: if(data_push_out) new_state = SEND_CRC32;
-		SEND_CRC32: if(data_push_out) new_state = DELAY;
-		DELAY: if(data_push_out) new_state = SET_READY;
-		SET_READY: if(i_enable == 1'b0) new_state = STATE_IDLE;
-	endcase
-end
-*/
 
 assign o_tx_en = (state > STATE_IDLE && state < DELAY) ? 1'b1 : 1'b0;
 
@@ -183,79 +161,7 @@ always_ff @ (posedge clk or negedge rst_n) begin
 		end
 	end
 end
-/*
-reg			[63:0]		ds;
-reg			[4:0]			ds_cnt;
-reg			[4:0]			ds_len;
-always_ff @ (posedge clk or negedge rst_n) begin
-	if(rst_n == 1'b0) begin
-		ds <= 64'd0;
-		ds_cnt <= 11'd0;
-		ds_len <= 11'd0;
-	end
-	else begin
-		if(new_state != state) begin
-			case(new_state)
-				SEND_PREAMBLE: begin
-					ds_len <= 5'd8;
-					ds <= 64'h55555555555555d5;
-				end
-				SEND_DST_MAC: begin
-					ds_len <= 5'd6;
-					ds <= {i_dst_mac, 16'd0};
-				end
-				SEND_SRC_MAC: begin
-					ds_len <= 5'd6;
-					ds <= {i_src_mac, 16'd0};
-				end
-				SEND_ETHER_TYPE: begin
-					ds_len <= 5'd2;
-					ds <= {16'h0806, 48'd0};	// ARP frame
-				end
-				SEND_ARP_HEADER: begin
-					ds_len <= 5'd8;
-					ds <= arp_header;
-				end
-				SEND_SHA: begin
-					ds_len <= 5'd6;
-					ds <= {i_SHA, 16'd0};
-				end
-				SEND_SPA: begin
-					ds_len <= 5'd4;
-					ds <= {i_SPA, 32'd0};
-				end
-				SEND_THA: begin
-					ds_len <= 5'd6;
-					ds <= {i_THA, 16'd0};
-				end
-				SEND_TPA: begin
-					ds_len <= 5'd4;
-					ds <= {i_TPA, 32'd0};
-				end
-				SEND_DUMMY_BYTES: begin
-					ds_len <= 5'd18;
-					ds <= 64'd0;
-				end
-				SEND_CRC32: begin
-					ds_len <= 5'd4;
-					ds <= 64'd0;
-				end
-				DELAY: begin
-					ds_len <= 5'd50;
-					ds <= 64'd0;
-				end
-			endcase
-			ds_cnt <= 11'd1;
-		end 
-		else begin
-			if(!data_push_out) begin
-				ds <= {ds[55:0], 8'h00};
-				ds_cnt <= ds_cnt + 5'd1;
-			end 
-		end
-	end
-end
-*/
+
 // ===========================================================================
 // CRC 32
 // ===========================================================================
