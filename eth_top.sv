@@ -26,8 +26,7 @@ always_comb
 			eth_tx_data = udp_tx_data;
 			eth_tx_data_en = udp_tx_data_en;
 		end 
-		START_SENDING_ARP, SEND_ARP_REQUEST, 
-		SEND_ARP_RESPONSE, SEND_ARP_PERIODIC: begin
+		SEND_ARP_REQUEST, SEND_ARP_RESPONSE, SEND_ARP_PERIODIC: begin
 			eth_tx_data = arp_tx_data;
 			eth_tx_data_en = arp_tx_data_en;
 		end
@@ -59,7 +58,7 @@ always_comb begin
 	arp_tg_mac = 48'd0;
 	arp_tg_ip = 32'd0;
 	case(state)
-		START_SENDING_ARP, SEND_ARP_REQUEST: begin
+		SEND_ARP_REQUEST: begin
 			arp_oper = 2'd1;
 			arp_dst_mac = 48'hFFFFFFFFFFFF;	// Broadcast ARP Reqest
 			arp_tg_mac = 48'h000000000000; 	// Unknown MAC
@@ -266,7 +265,7 @@ always_comb begin
 					&& save_THA == self_mac && save_TPA == self_ip)
 				new_state = SEND_UDP_PACKET;
 			else
-				if(arp_wait_counter == 32'h2FFFFFFF)		// ~ 2 sec TimeOut
+				if(arp_wait_counter == 32'd125000000)		// ~ 1 sec TimeOut on 125 MHz
 					new_state = START_SENDING_ARP;
 		end
 		
@@ -280,7 +279,7 @@ always_comb begin
 				if(arp_req_flag == 1'b1)
 					new_state = SEND_ARP_RESPONSE;
 				else
-					if(arp_req_period != 32'h1FFFFFFF)	// ~ 4 sec
+					if(arp_req_period != 32'd500000000)	// ~ 4 sec
 						new_state = SEND_ARP_PERIODIC;
 			end
 		end
@@ -300,7 +299,7 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 		arp_wait_counter <= 32'd0;
 	else
 		if(state == WAIT_ARP_RESPONSE) begin
-			if(arp_wait_counter != 32'h2FFFFFFF)
+			if(arp_wait_counter != 32'd125000000)
 				arp_wait_counter <= arp_wait_counter + 32'd1;
 		end 
 		else
@@ -329,7 +328,7 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 		if(state != SEND_UDP_PACKET)
 			arp_req_period <= 32'd0;
 		else
-			if(arp_req_period != 32'h1FFFFFFF)	// ~4 sec
+			if(arp_req_period != 32'd500000000)	// ~4 sec
 				arp_req_period <= arp_req_period + 32'd1;
 
 //----------------------------------------------------------------------------

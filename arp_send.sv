@@ -81,6 +81,27 @@ always_comb begin
 	case(state)
 		NONE: if(1'b0 != rst_n) new_state = STATE_IDLE;
 		STATE_IDLE: if(i_enable == 1'b1) new_state = SEND_PREAMBLE;
+		SEND_PREAMBLE: if(ds_cnt == 5'd8) new_state = SEND_DST_MAC;
+		SEND_DST_MAC: if(ds_cnt == 5'd6) new_state = SEND_SRC_MAC;
+		SEND_SRC_MAC: if(ds_cnt == 5'd6) new_state = SEND_ETHER_TYPE;
+		SEND_ETHER_TYPE: if(ds_cnt == 5'd2) new_state = SEND_ARP_HEADER;
+		SEND_ARP_HEADER: if(ds_cnt == 5'd8) new_state = SEND_SHA;
+		SEND_SHA: if(ds_cnt == 5'd6) new_state = SEND_SPA;
+		SEND_SPA: if(ds_cnt == 5'd4) new_state = SEND_THA;
+		SEND_THA: if(ds_cnt == 5'd6) new_state = SEND_TPA;
+		SEND_TPA: if(ds_cnt == 5'd4) new_state = SEND_DUMMY_BYTES;
+		SEND_DUMMY_BYTES: if(ds_cnt == 5'd18) new_state = SEND_CRC32;
+		SEND_CRC32: if(ds_cnt == 5'd4) new_state = DELAY;
+		DELAY: if(ds_cnt == 5'd50) new_state = SET_READY;
+		SET_READY: if(i_enable == 1'b0) new_state = STATE_IDLE;
+	endcase
+end
+/*
+always_comb begin
+	new_state = state;
+	case(state)
+		NONE: if(1'b0 != rst_n) new_state = STATE_IDLE;
+		STATE_IDLE: if(i_enable == 1'b1) new_state = SEND_PREAMBLE;
 		SEND_PREAMBLE: if(data_push_out) new_state = SEND_DST_MAC;
 		SEND_DST_MAC: if(data_push_out) new_state = SEND_SRC_MAC;
 		SEND_SRC_MAC: if(data_push_out) new_state = SEND_ETHER_TYPE;
@@ -96,6 +117,7 @@ always_comb begin
 		SET_READY: if(i_enable == 1'b0) new_state = STATE_IDLE;
 	endcase
 end
+*/
 
 assign o_tx_en = (state > STATE_IDLE && state < DELAY) ? 1'b1 : 1'b0;
 
@@ -128,6 +150,40 @@ end
 // ===========================================================================
 assign o_data = (state == SEND_CRC32) ? crc32[7:0] : ds[63:56];
 
+reg			[63:0]		ds;
+reg			[4:0]			ds_cnt;
+reg			[4:0]			ds_len;
+always_ff @ (posedge clk or negedge rst_n) begin
+	if(rst_n == 1'b0) begin
+		ds <= 64'd0;
+		ds_cnt <= 11'd0;
+		ds_len <= 11'd0;
+	end
+	else begin
+		if(new_state != state) begin
+			case(new_state)
+				SEND_PREAMBLE: ds <= 64'h55555555555555d5;
+				SEND_DST_MAC: ds <= {i_dst_mac, 16'd0};
+				SEND_SRC_MAC: ds <= {i_src_mac, 16'd0};
+				SEND_ETHER_TYPE: ds <= {16'h0806, 48'd0};	// ARP frame
+				SEND_ARP_HEADER: ds <= arp_header;
+				SEND_SHA: ds <= {i_SHA, 16'd0};
+				SEND_SPA: ds <= {i_SPA, 32'd0};
+				SEND_THA: ds <= {i_THA, 16'd0};
+				SEND_TPA: ds <= {i_TPA, 32'd0};
+				SEND_DUMMY_BYTES: ds <= 64'd0;
+				SEND_CRC32: ds <= 64'd0;
+				DELAY: ds <= 64'd0;
+			endcase
+			ds_cnt <= 11'd1;
+		end 
+		else begin
+			ds <= {ds[55:0], 8'h00};
+			ds_cnt <= ds_cnt + 5'd1;
+		end
+	end
+end
+/*
 reg			[63:0]		ds;
 reg			[4:0]			ds_cnt;
 reg			[4:0]			ds_len;
@@ -199,7 +255,7 @@ always_ff @ (posedge clk or negedge rst_n) begin
 		end
 	end
 end
-
+*/
 // ===========================================================================
 // CRC 32
 // ===========================================================================
