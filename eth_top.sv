@@ -26,7 +26,8 @@ always_comb
 			eth_tx_data = udp_tx_data;
 			eth_tx_data_en = udp_tx_data_en;
 		end 
-		SEND_ARP_REQUEST, SEND_ARP_RESPONSE, SEND_ARP_PERIODIC: begin
+		START_SENDING_ARP, SEND_ARP_REQUEST, 
+		SEND_ARP_RESPONSE, SEND_ARP_PERIODIC: begin
 			eth_tx_data = arp_tx_data;
 			eth_tx_data_en = arp_tx_data_en;
 		end
@@ -58,7 +59,7 @@ always_comb begin
 	arp_tg_mac = 48'd0;
 	arp_tg_ip = 32'd0;
 	case(state)
-		SEND_ARP_REQUEST: begin
+		START_SENDING_ARP, SEND_ARP_REQUEST: begin
 			arp_oper = 2'd1;
 			arp_dst_mac = 48'hFFFFFFFFFFFF;	// Broadcast ARP Reqest
 			arp_tg_mac = 48'h000000000000; 	// Unknown MAC
@@ -97,18 +98,20 @@ arp_send arp_send_unit1(
 	.i_THA(arp_tg_mac),
 	.i_TPA(arp_tg_ip),
 	
-	.i_enable((state == SEND_ARP_REQUEST || 
-			state == SEND_ARP_RESPONSE ||
-			state == SEND_ARP_PERIODIC) ? 1'b1 : 1'b0),
+	.i_enable((state == START_SENDING_ARP) ? 1'b1 : 1'b0),
 	.o_ready(arp_sender_ready)
 );
 // ===========================================================================
 // DEBUG
 // ===========================================================================
-reg			[3:0]		arp_rdy_cntr;
 
+reg			[0:0]		prev_arp_sender_ready;
 always_ff @ (posedge eth_tx_clk) 
-	if(arp_sender_ready)
+	prev_arp_sender_ready <= arp_sender_ready;
+
+reg			[3:0]		arp_rdy_cntr;
+always_ff @ (posedge eth_tx_clk) 
+	if(arp_sender_ready != prev_arp_sender_ready)
 		arp_rdy_cntr <= arp_rdy_cntr + 4'd1;
 		
 assign LEDG[8:5] = arp_rdy_cntr;
@@ -181,26 +184,35 @@ assign LEDG[0] = arp_resp_cntr[0];
 assign LEDG[1] = arp_req_cntr[0];
 assign LEDG[2] = udp_cntr[0];
 
-always_ff @ (posedge eth_rx_clk)
-	if(prev_pkt_type != recv_pkt_type) begin
-		case(recv_pkt_type)
-			eth_recv.UDP: udp_cntr <= udp_cntr + 9'd1;
-			eth_recv.ARP_REQ: begin
-				if(recv_THA == self_mac && recv_TPA == self_ip) begin
-					arp_req_cntr <= arp_req_cntr + 9'd1;
-				end
-			end
-			eth_recv.ARP_RESP: begin
-				if(recv_THA == self_mac && recv_TPA == self_ip) begin
-					save_SHA <= recv_SHA;
-					save_SPA <= recv_SPA;
-					save_THA <= recv_THA;
-					save_TPA <= recv_TPA;
-					arp_resp_cntr <= arp_resp_cntr + 9'd1;
-				end
-			end
-		endcase
+always_ff @ (posedge eth_rx_clk or negedge rst_n)
+	if(1'b0 == rst_n) begin
+		save_SHA <= 48'd0;
+		save_SPA <= 32'd0;
+		save_THA <= 48'd0;
+		save_TPA <= 32'd0;
+		arp_resp_cntr <= 9'd0;
+		arp_req_cntr <= 9'd0;
 	end
+	else 
+		if(prev_pkt_type != recv_pkt_type) begin
+			case(recv_pkt_type)
+				eth_recv.UDP: udp_cntr <= udp_cntr + 9'd1;
+				eth_recv.ARP_REQ: begin
+					if(/*recv_THA == self_mac &&*/ recv_TPA == self_ip) begin
+						arp_req_cntr <= arp_req_cntr + 9'd1;
+					end
+				end
+				eth_recv.ARP_RESP: begin
+					if(recv_THA == self_mac && recv_TPA == self_ip) begin
+						save_SHA <= recv_SHA;
+						save_SPA <= recv_SPA;
+						save_THA <= recv_THA;
+						save_TPA <= recv_TPA;
+						arp_resp_cntr <= arp_resp_cntr + 9'd1;
+					end
+				end
+			endcase
+		end
 
 // ===========================================================================
 // STATE MACHINE
@@ -208,11 +220,12 @@ always_ff @ (posedge eth_rx_clk)
 enum logic [3:0] {
 	NONE = 4'd0,
 	STATE_IDLE = 4'd1,
-	SEND_ARP_REQUEST = 4'd2,
-	WAIT_ARP_RESPONSE = 4'd3,
-	SEND_ARP_RESPONSE = 4'd4,
-	SEND_ARP_PERIODIC = 4'd5,
-	SEND_UDP_PACKET = 4'd6
+	START_SENDING_ARP = 4'd2,
+	SEND_ARP_REQUEST = 4'd3,
+	WAIT_ARP_RESPONSE = 4'd4,
+	SEND_ARP_RESPONSE = 4'd5,
+	SEND_ARP_PERIODIC = 4'd6,
+	SEND_UDP_PACKET = 4'd7
 } state, new_state;
 
 //----------------------------------------------------------------------------
@@ -238,21 +251,23 @@ end
 always_comb begin
 	new_state = state;
 	case(state)
-		NONE: if(1'b1 == rst_n) new_state = SEND_ARP_REQUEST;
+		NONE: if(1'b1 == rst_n && arp_sender_ready == 1'b1) new_state = START_SENDING_ARP;
 		
-		SEND_ARP_REQUEST: begin
+		START_SENDING_ARP: 
+			if(arp_sender_ready == 1'b0) 
+				new_state = SEND_ARP_REQUEST;
+		
+		SEND_ARP_REQUEST:
 			if(arp_sender_ready == 1'b1) 
 				new_state = WAIT_ARP_RESPONSE;
-		end
 		
 		WAIT_ARP_RESPONSE: begin
-//			if(recv_pkt_type != prev_pkt_type && recv_pkt_type == eth_recv.ARP_RESP
-//					&& recv_THA == self_mac && recv_TPA == self_ip)
-			if(prev_arp_resp_cntr != arp_resp_cntr)
+			if(prev_arp_resp_cntr != arp_resp_cntr
+					&& save_THA == self_mac && save_TPA == self_ip)
 				new_state = SEND_UDP_PACKET;
 			else
-				if(arp_wait_counter == 32'h08FFFFFF)		// ~ 2 sec TimeOut
-					new_state = SEND_ARP_REQUEST;
+				if(arp_wait_counter == 32'h2FFFFFFF)		// ~ 2 sec TimeOut
+					new_state = START_SENDING_ARP;
 		end
 		
 		SEND_ARP_RESPONSE: begin
@@ -285,7 +300,7 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 		arp_wait_counter <= 32'd0;
 	else
 		if(state == WAIT_ARP_RESPONSE) begin
-			if(arp_wait_counter != 32'h08FFFFFF)
+			if(arp_wait_counter != 32'h2FFFFFFF)
 				arp_wait_counter <= arp_wait_counter + 32'd1;
 		end 
 		else
@@ -294,7 +309,7 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 //----------------------------------------------------------------------------
 
 reg			[0:0]			arp_req_flag;		// arp ask trigger
-always_ff @ (posedge eth_rx_clk or negedge rst_n)
+always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		arp_req_flag <= 1'b0;
 	else
@@ -307,7 +322,7 @@ always_ff @ (posedge eth_rx_clk or negedge rst_n)
 //----------------------------------------------------------------------------
 				
 reg			[31:0]		arp_req_period;	// periodic ARP request
-always_ff @ (posedge eth_rx_clk or negedge rst_n)
+always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		arp_req_period <= 32'd0;
 	else

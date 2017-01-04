@@ -263,7 +263,7 @@ assign ARP_OPER = arp_header[15:0];		// 1-Req 2-Resp
 reg		[47:0]		arp_SHA;			
 assign o_SHA = arp_SHA;
 reg		[31:0]		arp_SPA;
-assign o_SPA = arp_SHA;
+assign o_SPA = arp_SPA;
 reg		[47:0]		arp_THA;
 assign o_THA = arp_THA;
 reg		[31:0]		arp_TPA;
