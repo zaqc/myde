@@ -227,6 +227,7 @@ assign rx_clk = ENET0_RX_CLK;
 
 wire					pll_clk_rx;
 wire					pll_clk_tx;
+wire					pll_gtx_clk;
 //assign ENET0_TX_CLK = pll_clk_tx;
 
 pll pll_90(

@@ -207,6 +207,7 @@ assign ip_header_ver = ip_hdr1[31:28];
 assign ip_header_size = ip_hdr1[27:24];
 assign ip_DSCP_ECN = ip_hdr1[23:16];
 assign ip_pkt_size = ip_hdr1[15:0];
+wire		[15:0]		ip_len;
 assign ip_len = ip_pkt_size - 16'h001C;// 16'h002E size of UDP packet
 
 reg		[31:0]		ip_hdr2;				// IPv4 HEADER 2
@@ -305,7 +306,7 @@ end
 //	Calc CRC 32
 // ===========================================================================
 reg		[0:0]			calc_crc_flag;
-assign o_crc_flag = calc_crc_flag;
+//assign o_crc_flag = calc_crc_flag;
 always_ff @ (posedge clk or negedge rst_n) begin
 	if(1'b0 == rst_n)
 		calc_crc_flag <= 1'b0;

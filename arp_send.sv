@@ -92,36 +92,12 @@ always_comb begin
 		SEND_TPA: if(ds_cnt == 5'd4) new_state = SEND_DUMMY_BYTES;
 		SEND_DUMMY_BYTES: if(ds_cnt == 5'd18) new_state = SEND_CRC32;
 		SEND_CRC32: if(ds_cnt == 5'd4) new_state = DELAY;
-		DELAY: if(ds_cnt == 5'd50) new_state = SET_READY;
+		DELAY: if(ds_cnt == 5'd30) new_state = SET_READY;
 		SET_READY: if(i_enable == 1'b0) new_state = STATE_IDLE;
 	endcase
 end
 
 assign o_tx_en = (state > STATE_IDLE && state < DELAY) ? 1'b1 : 1'b0;
-
-// ===========================================================================
-//	DELAY for PACKET SEND
-// ===========================================================================
-reg	[31:0]	send_delay;
-reg	[0:0]		send_flag;
-always_ff @ (posedge clk or negedge rst_n) begin
-	if(rst_n == 1'b0) begin
-		send_delay <= 32'h08FFFFFF;
-		send_flag <= 1'b0;
-	end
-	else begin
-		if(state == STATE_IDLE) begin
-			if(send_delay != 32'h08FFFFFF)
-				send_delay <= send_delay + 32'd1;
-			else
-				send_flag <= 1'b1;
-		end
-		else begin
-			send_delay <= 32'd0;
-			send_flag <= 1'b0;
-		end
-	end
-end
 
 // ===========================================================================
 //	DATA SHIFT & SEND
@@ -134,8 +110,8 @@ reg			[4:0]			ds_len;
 always_ff @ (posedge clk or negedge rst_n) begin
 	if(rst_n == 1'b0) begin
 		ds <= 64'd0;
-		ds_cnt <= 11'd0;
-		ds_len <= 11'd0;
+		ds_cnt <= 5'd0;
+		ds_len <= 5'd0;
 	end
 	else begin
 		if(new_state != state) begin
@@ -153,7 +129,7 @@ always_ff @ (posedge clk or negedge rst_n) begin
 				SEND_CRC32: ds <= 64'd0;
 				DELAY: ds <= 64'd0;
 			endcase
-			ds_cnt <= 11'd1;
+			ds_cnt <= 5'd1;
 		end 
 		else begin
 			ds <= {ds[55:0], 8'h00};

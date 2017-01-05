@@ -173,7 +173,7 @@ reg		[4:0]			state;
 reg		[4:0]			new_state;
 always @ (posedge clk or negedge rst_n) begin
 	if(1'b0 == rst_n)
-		state <= 5'd0;
+		state <= eth_none;
 	else
 		state <= new_state;
 end
@@ -184,12 +184,7 @@ always @ (*) begin
 	case(state)
 		eth_none: if(1'b0 != rst_n) new_state = eth_idle;
 			
-		eth_idle:
-			if(1'b1 != i_enable) begin
-				new_state = eth_preamble;
-				data_ts = 48'd0;
-				cnt_ts = 4'd0;
-			end
+		eth_idle: if(1'b1 != i_enable) new_state = eth_preamble;
 			
 		eth_preamble:
 			if(send_cnt == send_len) begin
