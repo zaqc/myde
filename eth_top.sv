@@ -56,19 +56,19 @@ reg			[47:0]	rqstr_mac;		// ARP Requester MAC
 reg			[31:0]	rqstr_ip;		// ARP Requester IP
 always_comb begin
 	case(state)
-		SEND_ARP_REQUEST: begin
+		START_ARP_REQUEST, SEND_ARP_REQUEST: begin
 			arp_oper = 2'd1;
 			arp_dst_mac = 48'hFFFFFFFFFFFF;	// Broadcast ARP Reqest
 			arp_tg_mac = 48'h000000000000; 	// Unknown MAC
 			arp_tg_ip = target_ip;
 		end
-		SEND_ARP_RESPONSE: begin
+		START_ARP_RESPONSE, SEND_ARP_RESPONSE: begin
 			arp_oper = 2'd2;
 			arp_dst_mac = save_SHA; // rqstr_mac;
 			arp_tg_mac = save_SHA;	// rqstr_mac;
 			arp_tg_ip = save_SPA;	// rqstr_ip;
 		end
-		SEND_ARP_PERIODIC: begin
+		START_ARP_PERIODIC, SEND_ARP_PERIODIC: begin
 			arp_oper = 2'd1;
 			arp_dst_mac = 48'hFFFFFFFFFFFF; 
 			arp_tg_mac = 48'h000000000000; 	// Unknown MAC
@@ -186,9 +186,9 @@ reg			[31:0]	save_TPA;
 reg			[8:0]		arp_resp_cntr;
 reg			[8:0]		arp_req_cntr;
 reg			[8:0]		udp_cntr;
-//assign LEDG[0] = arp_resp_cntr[0];
-//assign LEDG[1] = arp_req_cntr[0];
-//assign LEDG[2] = udp_cntr[0];
+assign LEDG[0] = arp_resp_cntr[0];
+assign LEDG[1] = arp_req_cntr[0];
+assign LEDG[2] = udp_cntr[0];
 
 always_ff @ (posedge eth_rx_clk or negedge rst_n)
 	if(1'b0 == rst_n) begin
@@ -234,7 +234,8 @@ enum logic [3:0] {
 	START_ARP_PERIODIC = 4'd7,
 	SEND_ARP_PERIODIC = 4'd8,
 	START_UDP_PACKET = 4'd9,
-	SEND_UDP_PACKET = 4'd10
+	SEND_UDP_PACKET = 4'd10,
+	IDLE_MODE = 4'd11
 } state, new_state;
 
 //----------------------------------------------------------------------------
@@ -253,11 +254,11 @@ always_ff @  (posedge eth_tx_clk or negedge rst_n) begin
 	if(1'b0 == rst_n)
 		prev_arp_resp_cntr <= 9'd0;
 	else
-		if(state == SEND_UDP_PACKET)
+		if(state == START_ARP_RESPONSE || state == SEND_ARP_RESPONSE)
 			prev_arp_resp_cntr <= arp_resp_cntr;
 end
 
-assign LEDG[3:0] = state;
+//----------------------------------------------------------------------------
 
 always_comb begin
 	new_state = state;
@@ -268,29 +269,61 @@ always_comb begin
 		SEND_ARP_REQUEST: if(arp_sender_ready == 1'b1) new_state = WAIT_ARP_RESPONSE;
 		WAIT_ARP_RESPONSE: 
 			if(prev_arp_resp_cntr != arp_resp_cntr)
-				new_state = START_UDP_PACKET;
+				new_state = IDLE_MODE;
 			else
-				if(arp_wait_counter == 32'd125000000)		// ~ 2 sec TimeOut on 125 MHz
+				if(arp_wait_counter == 32'd125000000)		// ~ 1 sec TimeOut on 125 MHz
 					new_state = START_ARP_REQUEST;
 					
 		START_ARP_RESPONSE: if(arp_sender_ready == 1'b0) new_state = SEND_ARP_RESPONSE;
-		SEND_ARP_RESPONSE: if(arp_sender_ready == 1'b1) new_state = START_UDP_PACKET;
-		
-		START_UDP_PACKET: if(udp_sender_ready == 1'b0) new_state = SEND_UDP_PACKET;				
-		SEND_UDP_PACKET:
-			if(udp_sender_ready == 1'b1)
-				if(arp_req_flag == 1'b1)
-					new_state = START_ARP_RESPONSE;
-				else
-					if(arp_req_period == 32'd1000000000)	// ~ 8 sec
-						new_state = START_ARP_PERIODIC;
-					else
-						new_state = START_UDP_PACKET;
+		SEND_ARP_RESPONSE: if(arp_sender_ready == 1'b1) new_state = IDLE_MODE;
 		
 		START_ARP_PERIODIC: if(arp_sender_ready == 1'b0) new_state = SEND_ARP_PERIODIC;
-		SEND_ARP_PERIODIC: if(arp_sender_ready == 1'b1) new_state = START_UDP_PACKET;
+		SEND_ARP_PERIODIC: if(arp_sender_ready == 1'b1) new_state = IDLE_MODE;
+		
+		START_UDP_PACKET: if(udp_sender_ready == 1'b0) new_state = SEND_UDP_PACKET;				
+		SEND_UDP_PACKET: if(udp_sender_ready == 1'b1) new_state = IDLE_MODE;
+		
+		IDLE_MODE: begin
+			if(idle_mode_counter == 32'd125000000 && udp_sender_ready == 1'b1)
+				new_state = START_UDP_PACKET;
+			else
+				if(prev_arp_req_flag != arp_req_flag && arp_sender_ready == 1'b1)
+					new_state = START_ARP_RESPONSE;
+				else
+					if(arp_req_period == 32'd1000000000 && arp_sender_ready == 1'b1)	// ~ 8 sec
+						new_state = START_ARP_PERIODIC;
+		end
 	endcase
 end
+
+//----------------------------------------------------------------------------
+
+reg			[0:0]			udp_start;
+always_ff @ (posedge eth_tx_clk)
+	if(new_state != state && new_state == START_UDP_PACKET)
+		udp_start = ~udp_start;
+assign LEDG[3] = udp_start;
+
+reg			[0:0]			udp_send;
+always_ff @ (posedge eth_tx_clk)
+	if(new_state != state && new_state == SEND_UDP_PACKET)
+		udp_send = ~udp_send;
+assign LEDG[4] = udp_send;
+
+
+reg			[31:0]		idle_mode_counter;
+always_ff @ (posedge eth_tx_clk or negedge rst_n)
+	if(1'b0 == rst_n)
+		idle_mode_counter <= 32'd0;
+	else
+	begin
+		if(state == IDLE_MODE) begin
+			if(idle_mode_counter != 32'd125000000)	// 1 sec
+				idle_mode_counter <= idle_mode_counter + 32'd1;
+		end
+		else
+			idle_mode_counter <= 32'd0;
+	end
 
 //----------------------------------------------------------------------------
 
@@ -299,32 +332,41 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		arp_wait_counter <= 32'd0;
 	else
-		if(state == WAIT_ARP_RESPONSE)
-			arp_wait_counter <= arp_wait_counter + 32'd1;
+		if(state == WAIT_ARP_RESPONSE) begin
+			if(arp_wait_counter != 32'd125000000)
+				arp_wait_counter <= arp_wait_counter + 32'd1;
+		end
 		else
 			arp_wait_counter <= 32'd0;
 		
 //----------------------------------------------------------------------------
 
-reg			[0:0]			arp_req_flag;		// arp ask trigger
-//always_ff @ (posedge eth_rx_clk or negedge rst_n)
-//	if(1'b0 == rst_n)
-//		arp_req_flag <= 1'b0;
-//	else
-//		if(state == SEND_ARP_RESPONSE)
-//			arp_req_flag <= 1'b0;
-//		else
-//			if(recv_pkt_type != prev_pkt_type && recv_pkt_type == eth_recv.ARP_REQ)
-//				arp_req_flag <= 1'b1;
+reg			[0:0]			prev_arp_req_flag;	// arp ask trigger
+always_ff @ (posedge eth_tx_clk or negedge rst_n)
+	if(1'b0 == rst_n)
+		prev_arp_req_flag <= 1'b0;
+	else
+		if(new_state != state && state == START_ARP_RESPONSE)
+			prev_arp_req_flag <= arp_req_flag;
+		
+reg			[0:0]			arp_req_flag;
+always_ff @ (posedge eth_rx_clk or negedge rst_n)
+	if(1'b0 == rst_n)
+		arp_req_flag <= 1'b0;
+	else
+		if(recv_pkt_type != prev_pkt_type && recv_pkt_type == eth_recv.ARP_REQ)
+			arp_req_flag <= ~arp_req_flag;
 
 //----------------------------------------------------------------------------
 				
-reg			[31:0]		arp_req_period;	// periodic ARP request
+reg			[31:0]		arp_req_period;		// periodic ARP request
 always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		arp_req_period <= 32'd0;
 	else
-		if(state == START_ARP_PERIODIC || state == SEND_ARP_PERIODIC)
+		if(new_state != state && (new_state == START_ARP_PERIODIC || 
+				new_state == SEND_ARP_PERIODIC || state == START_ARP_RESPONSE || 
+				state == SEND_ARP_RESPONSE))
 			arp_req_period <= 32'd0;
 		else
 			if(arp_req_period != 32'd1000000000)

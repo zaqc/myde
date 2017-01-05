@@ -93,29 +93,32 @@ reg			[15:0]	udp_crc;
 // SM state's
 parameter	[4:0]		eth_none = 5'd0;			// none
 parameter	[4:0]		eth_idle = 5'd1;
-parameter	[4:0]		eth_preamble = 5'd2;		// send 0x55 seven times
-parameter	[4:0]		eth_sdf = 5'd3;				// send end of preamble 0x5D
-parameter	[4:0]		eth_dst_mac = 5'd4;		// send destination MAC Address
-parameter	[4:0]		eth_src_mac = 5'd5;		// send self MAC Address
-parameter	[4:0]		eth_type = 5'd6;			// send 0x0800
-parameter	[4:0]		eth_hdr1 = 5'd7;
-parameter	[4:0]		eth_hdr2 = 5'd8;
-parameter	[4:0]		eth_hdr3 = 5'd9;
-parameter	[4:0]		eth_src_ip = 5'd10;
-parameter	[4:0]		eth_dst_ip = 5'd11;
-parameter	[4:0]		eth_udp_src_dst_port = 5'd12;
-parameter	[4:0]		eth_udp_len_crc = 5'd13;
-parameter	[4:0]		eth_wait = 5'd14;
-parameter	[4:0]		eth_data_stream = 5'd15;
-parameter	[4:0]		eth_crc32 = 5'd16;
-parameter	[4:0]		eth_done = 5'd17;
-parameter	[4:0]		enable_rise = 5'd18;
+parameter	[4:0]		eth_start = 5'd2;
+parameter	[4:0]		eth_preamble = 5'd3;		// send 0x55 seven times
+parameter	[4:0]		eth_sdf = 5'd4;				// send end of preamble 0x5D
+parameter	[4:0]		eth_dst_mac = 5'd5;		// send destination MAC Address
+parameter	[4:0]		eth_src_mac = 5'd6;		// send self MAC Address
+parameter	[4:0]		eth_type = 5'd7;			// send 0x0800
+parameter	[4:0]		eth_hdr1 = 5'd8;
+parameter	[4:0]		eth_hdr2 = 5'd9;
+parameter	[4:0]		eth_hdr3 = 5'd10;
+parameter	[4:0]		eth_src_ip = 5'd11;
+parameter	[4:0]		eth_dst_ip = 5'd12;
+parameter	[4:0]		eth_udp_src_dst_port = 5'd13;
+parameter	[4:0]		eth_udp_len_crc = 5'd14;
+parameter	[4:0]		eth_wait = 5'd15;
+parameter	[4:0]		eth_data_stream = 5'd16;
+parameter	[4:0]		eth_crc32 = 5'd17;
+parameter	[4:0]		eth_done = 5'd18;
+parameter	[4:0]		enable_rise = 5'd19;
 
 // ===========================================================================
 // DATA GENERATOR
 // ===========================================================================
 reg			[7:0]		bc;
-always @ (posedge clk) bc <= bc + 8'd1;
+always @ (posedge clk) 
+	if(state == eth_data_stream) 
+		bc <= bc + 8'd1;
 
 // ===========================================================================
 // SHIFTER & SENDER
@@ -184,7 +187,9 @@ always @ (*) begin
 	case(state)
 		eth_none: if(1'b0 != rst_n) new_state = eth_idle;
 			
-		eth_idle: if(1'b1 != i_enable) new_state = eth_preamble;
+		eth_idle: if(1'b1 == i_enable) new_state = eth_start;
+		
+		eth_start: if(1'b0 == i_enable) new_state = eth_preamble;
 			
 		eth_preamble:
 			if(send_cnt == send_len) begin
@@ -290,7 +295,7 @@ always @ (*) begin
 			end
 			
 		eth_done:
-			if(pause_cntr == 32'h07735940) begin	// 1 sec
+			if(pause_cntr == 32'd75000) begin //32'h07735940) begin	// 1 sec
 				new_state = enable_rise;
 				data_ts = 48'h000000000000;
 				cnt_ts = 4'd6;
@@ -313,7 +318,7 @@ always @ (posedge clk or negedge rst_n)
 			if(new_state == eth_idle)
 				rdy <= 1'b1;
 			else
-				if(new_state == eth_preamble)
+				if(new_state == eth_start)
 					rdy <= 1'b0;
 		end
 		

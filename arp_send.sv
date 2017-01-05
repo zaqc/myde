@@ -28,7 +28,7 @@ always_ff @ (posedge clk or negedge rst_n)
 		rdy <= 1'b0;
 	else
 		if(new_state != state) begin			
-			if(new_state == SEND_PREAMBLE)
+			if(new_state == ETH_START)
 				rdy <=  1'b0;
 			else
 				if(new_state == STATE_IDLE)
@@ -51,19 +51,20 @@ assign arp_header = {ARP_HTYPE, ARP_PTYPE, ARP_HLEN, ARP_PLEN, {14'd0, i_operati
 enum logic [3:0] {
 	NONE = 4'd0,
 	STATE_IDLE = 4'd1,
-	SEND_PREAMBLE = 4'd2,
-	SEND_DST_MAC = 4'd3,
-	SEND_SRC_MAC = 4'd4,
-	SEND_ETHER_TYPE = 4'd5,
-	SEND_ARP_HEADER = 4'd6,
-	SEND_SHA = 4'd7,
-	SEND_SPA = 4'd8,
-	SEND_THA = 4'd9,
-	SEND_TPA = 4'd10,
-	SEND_DUMMY_BYTES = 4'd11,
-	SEND_CRC32 = 4'd12,
-	DELAY = 4'd13,
-	SET_READY = 4'd14
+	ETH_START = 4'd2,
+	SEND_PREAMBLE = 4'd3,
+	SEND_DST_MAC = 4'd4,
+	SEND_SRC_MAC = 4'd5,
+	SEND_ETHER_TYPE = 4'd6,
+	SEND_ARP_HEADER = 4'd7,
+	SEND_SHA = 4'd8,
+	SEND_SPA = 4'd9,
+	SEND_THA = 4'd10,
+	SEND_TPA = 4'd11,
+	SEND_DUMMY_BYTES = 4'd12,
+	SEND_CRC32 = 4'd13,
+	DELAY = 4'd14,
+	SET_READY = 4'd15
 } state, new_state;
 
 always_ff @ (posedge clk or negedge rst_n) begin
@@ -80,7 +81,8 @@ always_comb begin
 	new_state = state;
 	case(state)
 		NONE: if(1'b0 != rst_n) new_state = STATE_IDLE;
-		STATE_IDLE: if(i_enable == 1'b1) new_state = SEND_PREAMBLE;
+		STATE_IDLE: if(i_enable == 1'b1) new_state = ETH_START;
+		ETH_START: if(i_enable == 1'b0) new_state = SEND_PREAMBLE;
 		SEND_PREAMBLE: if(ds_cnt == 5'd8) new_state = SEND_DST_MAC;
 		SEND_DST_MAC: if(ds_cnt == 5'd6) new_state = SEND_SRC_MAC;
 		SEND_SRC_MAC: if(ds_cnt == 5'd6) new_state = SEND_ETHER_TYPE;
@@ -97,7 +99,7 @@ always_comb begin
 	endcase
 end
 
-assign o_tx_en = (state > STATE_IDLE && state < DELAY) ? 1'b1 : 1'b0;
+assign o_tx_en = (state > ETH_START && state < DELAY) ? 1'b1 : 1'b0;
 
 // ===========================================================================
 //	DATA SHIFT & SEND
