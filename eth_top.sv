@@ -137,7 +137,20 @@ udp_pkt_gen udp_pkt_gen_unit1(
 	.i_enable((state == START_UDP_PACKET) ? 1'b1 : 1'b0),
 	.o_ready(udp_sender_ready)
 );
-
+/*
+udp_send udp_send_unit(
+	.clk(eth_tx_clk),
+	.rst_n(rst_n),
+	
+	.o_data(udp_tx_data),
+	.o_tx_en(udp_tx_data_en),
+	
+	.i_data_len(16'd1024),
+	
+	.i_enable((state == START_UDP_PACKET) ? 1'b1 : 1'b0),
+	.o_ready(udp_sender_ready)
+);
+*/
  
 // ===========================================================================
 // ETHERNET RECEIVE ANY PACKETS
@@ -304,11 +317,11 @@ always_ff @ (posedge eth_tx_clk)
 		udp_start = ~udp_start;
 assign LEDG[3] = udp_start;
 
-reg			[0:0]			udp_send;
+reg			[0:0]			udp_send_flag;
 always_ff @ (posedge eth_tx_clk)
 	if(new_state != state && new_state == SEND_UDP_PACKET)
-		udp_send = ~udp_send;
-assign LEDG[4] = udp_send;
+		udp_send_flag = ~udp_send_flag;
+assign LEDG[4] = udp_send_flag;
 
 
 reg			[31:0]		idle_mode_counter;
