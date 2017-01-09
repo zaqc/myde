@@ -2,6 +2,7 @@ module eth_top(
 	input					rst_n,
 
 	output	[8:0]		LEDG,
+	output	[17:0]	LEDR,
 
 	input					eth_rx_clk,
 	input		[7:0]		eth_rx_data,
@@ -22,14 +23,14 @@ wire						udp_tx_data_en;
 
 always_comb
 	case(state)
-		START_UDP_PACKET, SEND_UDP_PACKET,
-		start_udp, send_udp: begin
+		SEND_UDP_PACKET,
+		send_udp: begin
 			eth_tx_data = udp_tx_data;
 			eth_tx_data_en = udp_tx_data_en;
 		end 
-		START_ARP_REQUEST, SEND_ARP_REQUEST, 
-		START_ARP_RESPONSE, SEND_ARP_RESPONSE,
-		START_ARP_PERIODIC, SEND_ARP_PERIODIC: begin
+		SEND_ARP_REQUEST, 
+		SEND_ARP_RESPONSE,
+		SEND_ARP_PERIODIC: begin
 			eth_tx_data = arp_tx_data;
 			eth_tx_data_en = arp_tx_data_en;
 		end
@@ -84,8 +85,12 @@ always_comb begin
 	endcase
 end
 
-wire						arp_sender_ready;
-	
+reg			[0:0]		arp_sender_ready;
+wire						ase;
+assign ase = (state == START_ARP_REQUEST || 
+					state == START_ARP_RESPONSE || 
+					state == START_ARP_PERIODIC) ? 1'b1 : 1'b0;
+
 arp_send arp_send_unit1(
 	.rst_n(rst_n),
 	.clk(eth_tx_clk),
@@ -102,11 +107,10 @@ arp_send arp_send_unit1(
 	.i_THA(arp_tg_mac),
 	.i_TPA(arp_tg_ip),
 	
-	.i_enable((	state == START_ARP_REQUEST || 
-					state == START_ARP_RESPONSE || 
-					state == START_ARP_PERIODIC) ? 1'b1 : 1'b0),
+	.i_enable(ase),
 	.o_ready(arp_sender_ready)
 );
+
 // ===========================================================================
 // DEBUG
 // ===========================================================================
@@ -126,7 +130,10 @@ assign LEDG[8:5] = arp_rdy_cntr;
 // SEND UDP PACKET
 // ===========================================================================
 
-wire						udp_sender_ready;
+reg			[0:0]		udp_sender_ready;
+wire						usen;
+assign usen = (state == START_UDP_PACKET || state == start_udp) ? 1'b1 : 1'b0;
+
 /*
 udp_pkt_gen udp_pkt_gen_unit1(
 	.rst_n(rst_n),
@@ -136,11 +143,11 @@ udp_pkt_gen udp_pkt_gen_unit1(
 	.tx_en(udp_tx_data_en),
 	
 	.i_enable((state == START_UDP_PACKET) ? 1'b1 : 1'b0),
-	.o_ready(udp_sender_ready)
+	.o_ready(usr)
 );
 */
 
-parameter	[47:0]	pegatron_mac = {8'h0c, 8'h54, 8'ha5, 8'h31, 8'h24, 8'h85};
+//parameter	[47:0]	pegatron_mac = {8'h0c, 8'h54, 8'ha5, 8'h31, 8'h24, 8'h85};
 
 udp_send udp_send_unit(
 	.rst_n(rst_n),
@@ -149,7 +156,7 @@ udp_send udp_send_unit(
 	.o_data(udp_tx_data),
 	.o_tx_en(udp_tx_data_en),
 	
-	.i_dst_mac(pegatron_mac),
+	.i_dst_mac(save_SHA), //pegatron_mac),
 	.i_src_mac(self_mac),
 	
 	.i_src_ip(self_ip),
@@ -158,9 +165,9 @@ udp_send udp_send_unit(
 	.i_src_port(50000),
 	.i_dst_port(50016),
 	
-	.i_data_len(16'd1024),
+	.i_data_len(16'd64),
 	
-	.i_enable((state == START_UDP_PACKET || state == start_udp) ? 1'b1 : 1'b0),
+	.i_enable(usen),
 	.o_ready(udp_sender_ready)
 );
 
@@ -265,6 +272,9 @@ enum logic [3:0] {
 	send_udp = 4'd13
 } state, new_state;
 
+// assign LEDR[3:0] = state;
+// assign LEDR[7:4] = new_state;
+
 //----------------------------------------------------------------------------
 
 always_ff @  (posedge eth_tx_clk or negedge rst_n) begin
@@ -281,9 +291,16 @@ always_ff @  (posedge eth_tx_clk or negedge rst_n) begin
 	if(1'b0 == rst_n)
 		prev_arp_resp_cntr <= 9'd0;
 	else
-		if(state == START_ARP_RESPONSE || state == SEND_ARP_RESPONSE)
-			prev_arp_resp_cntr <= arp_resp_cntr;
+		if(state == IDLE_MODE)
+			prev_arp_resp_cntr <= cc_arp_resp_cntr;
 end
+
+reg			[8:0]		cc_arp_resp_cntr;
+always_ff @  (posedge eth_tx_clk or negedge rst_n)
+	if(1'b0 == rst_n)
+		cc_arp_resp_cntr <= 9'd0;
+	else
+		cc_arp_resp_cntr <= arp_resp_cntr;
 
 //----------------------------------------------------------------------------
 
@@ -295,10 +312,10 @@ always_comb begin
 		START_ARP_REQUEST: if(arp_sender_ready == 1'b0) new_state = SEND_ARP_REQUEST;		
 		SEND_ARP_REQUEST: if(arp_sender_ready == 1'b1) new_state = WAIT_ARP_RESPONSE;
 		WAIT_ARP_RESPONSE: 
-			if(prev_arp_resp_cntr != arp_resp_cntr)
+			if(prev_arp_resp_cntr != cc_arp_resp_cntr)
 				new_state = IDLE_MODE;
 			else
-				if(arp_wait_counter == 32'd125000000)		// ~ 1 sec TimeOut on 125 MHz
+				if(arp_wait_counter == 32'd125000000 && arp_sender_ready == 1'b1)		// ~ 1 sec TimeOut on 125 MHz
 					new_state = START_ARP_REQUEST;
 					
 		START_ARP_RESPONSE: if(arp_sender_ready == 1'b0) new_state = SEND_ARP_RESPONSE;
@@ -307,7 +324,7 @@ always_comb begin
 		START_ARP_PERIODIC: if(arp_sender_ready == 1'b0) new_state = SEND_ARP_PERIODIC;
 		SEND_ARP_PERIODIC: if(arp_sender_ready == 1'b1) new_state = IDLE_MODE;
 		
-		START_UDP_PACKET: if(udp_sender_ready == 1'b0) new_state = SEND_UDP_PACKET;				
+		START_UDP_PACKET: if(udp_sender_ready == 1'b0) new_state = SEND_UDP_PACKET;
 		SEND_UDP_PACKET: if(udp_sender_ready == 1'b1) new_state = start_udp; //IDLE_MODE;
 		
 		start_udp: if(udp_sender_ready == 1'b0) new_state = send_udp;
@@ -317,7 +334,7 @@ always_comb begin
 			if(idle_mode_counter == 32'd125000000 && udp_sender_ready == 1'b1)
 				new_state = START_UDP_PACKET;
 			else
-				if(prev_arp_req_flag != arp_req_flag && arp_sender_ready == 1'b1)
+				if(prev_arp_req_flag != cc_arp_req_flag && arp_sender_ready == 1'b1)
 					new_state = START_ARP_RESPONSE;
 				else
 					if(arp_req_period == 32'd1000000000 && arp_sender_ready == 1'b1)	// ~ 8 sec
@@ -376,10 +393,16 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		prev_arp_req_flag <= 1'b0;
 	else
-		if(new_state != state && (state == START_ARP_RESPONSE ||
-				state == SEND_ARP_REQUEST))
-			prev_arp_req_flag <= arp_req_flag;
+		if(new_state != state && state == START_ARP_RESPONSE)
+			prev_arp_req_flag <= cc_arp_req_flag;
 		
+reg			[0:0]			cc_arp_req_flag;
+always_ff @ (posedge eth_tx_clk or negedge rst_n)
+	if(1'b0 == rst_n)
+		cc_arp_req_flag <= 1'b0;
+	else
+		cc_arp_req_flag <= arp_req_flag;
+
 reg			[0:0]			arp_req_flag;
 always_ff @ (posedge eth_rx_clk or negedge rst_n)
 	if(1'b0 == rst_n)
