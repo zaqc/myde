@@ -24,20 +24,7 @@ module udp_send(
 // ===========================================================================
 // READY
 // ===========================================================================
-reg		[0:0]			rdy;
-always @ (posedge clk or negedge rst_n)
-	if(1'b0 == rst_n)
-		rdy <= 1'b0;
-	else
-		if(new_state != state) begin
-			if(new_state == IDLE)
-				rdy <= 1'b1;
-			else
-				if(new_state == ETH_START)
-					rdy <= 1'b0;
-		end
-		
-assign o_ready = rdy;
+assign o_ready = (state == IDLE) ? 1'b1 : 1'b0;
 
 // ===========================================================================
 // IP/UDP parameters & header
@@ -118,9 +105,9 @@ always_comb begin
 		SEND_UDP_DST_PORT: if(ds_cnt == 16'd2) new_state = SEND_UDP_LEN;
 		SEND_UDP_LEN: if(ds_cnt == 16'd2) new_state = SEND_UDP_CRC;
 		SEND_UDP_CRC: if(ds_cnt == 16'd2) new_state = SEND_UDP_DATA;
-		SEND_UDP_DATA: if(ds_cnt == i_in_data) new_state = SEND_CRC32;
+		SEND_UDP_DATA: if(ds_cnt == i_data_len) new_state = SEND_CRC32;
 		SEND_CRC32: if(ds_cnt == 16'd4) new_state = DELAY;
-		DELAY: if(ds_cnt == 16'd100) new_state = SET_READY;
+		DELAY: if(ds_cnt == 16'd10) new_state = SET_READY;
 		SET_READY: if(1'b0 == i_enable) new_state = IDLE;
 	endcase
 end

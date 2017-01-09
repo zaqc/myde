@@ -20,20 +20,10 @@ module arp_send(
 	output					o_ready		// set ENABLE_LATCH and SEND_IS_DONE
 );
 
-reg			[0:0]			rdy;
-assign o_ready = rdy;
-
-always_ff @ (posedge clk or negedge rst_n)
-	if(1'b0 == rst_n)
-		rdy <= 1'b0;
-	else
-		if(new_state != state) begin			
-			if(new_state == ETH_START)
-				rdy <=  1'b0;
-			else
-				if(new_state == STATE_IDLE)
-					rdy <= 1'b1;
-		end
+// ===========================================================================
+// READY
+// ===========================================================================
+assign o_ready = (state == STATE_IDLE) ? 1'b1 : 1'b0;
 
 // ===========================================================================
 // PARAMETERS
@@ -74,27 +64,24 @@ always_ff @ (posedge clk or negedge rst_n) begin
 		state <= new_state;
 end
 
-logic	data_push_out;
-assign data_push_out = (ds_cnt == ds_len) ? 1'b1 : 1'b0;
-
 always_comb begin
 	new_state = state;
 	case(state)
 		NONE: if(1'b0 != rst_n) new_state = STATE_IDLE;
 		STATE_IDLE: if(i_enable == 1'b1) new_state = ETH_START;
 		ETH_START: if(i_enable == 1'b0) new_state = SEND_PREAMBLE;
-		SEND_PREAMBLE: if(ds_cnt == 5'd8) new_state = SEND_DST_MAC;
-		SEND_DST_MAC: if(ds_cnt == 5'd6) new_state = SEND_SRC_MAC;
-		SEND_SRC_MAC: if(ds_cnt == 5'd6) new_state = SEND_ETHER_TYPE;
-		SEND_ETHER_TYPE: if(ds_cnt == 5'd2) new_state = SEND_ARP_HEADER;
-		SEND_ARP_HEADER: if(ds_cnt == 5'd8) new_state = SEND_SHA;
-		SEND_SHA: if(ds_cnt == 5'd6) new_state = SEND_SPA;
-		SEND_SPA: if(ds_cnt == 5'd4) new_state = SEND_THA;
-		SEND_THA: if(ds_cnt == 5'd6) new_state = SEND_TPA;
-		SEND_TPA: if(ds_cnt == 5'd4) new_state = SEND_DUMMY_BYTES;
-		SEND_DUMMY_BYTES: if(ds_cnt == 5'd18) new_state = SEND_CRC32;
-		SEND_CRC32: if(ds_cnt == 5'd4) new_state = DELAY;
-		DELAY: if(ds_cnt == 5'd30) new_state = SET_READY;
+		SEND_PREAMBLE: if(ds_cnt == 16'd8) new_state = SEND_DST_MAC;
+		SEND_DST_MAC: if(ds_cnt == 16'd6) new_state = SEND_SRC_MAC;
+		SEND_SRC_MAC: if(ds_cnt == 16'd6) new_state = SEND_ETHER_TYPE;
+		SEND_ETHER_TYPE: if(ds_cnt == 16'd2) new_state = SEND_ARP_HEADER;
+		SEND_ARP_HEADER: if(ds_cnt == 16'd8) new_state = SEND_SHA;
+		SEND_SHA: if(ds_cnt == 16'd6) new_state = SEND_SPA;
+		SEND_SPA: if(ds_cnt == 16'd4) new_state = SEND_THA;
+		SEND_THA: if(ds_cnt == 16'd6) new_state = SEND_TPA;
+		SEND_TPA: if(ds_cnt == 16'd4) new_state = SEND_DUMMY_BYTES;
+		SEND_DUMMY_BYTES: if(ds_cnt == 16'd18) new_state = SEND_CRC32;
+		SEND_CRC32: if(ds_cnt == 16'd4) new_state = DELAY;
+		DELAY: if(ds_cnt == 16'd200) new_state = SET_READY;
 		SET_READY: if(i_enable == 1'b0) new_state = STATE_IDLE;
 	endcase
 end
@@ -107,13 +94,11 @@ assign o_tx_en = (state > ETH_START && state < DELAY) ? 1'b1 : 1'b0;
 assign o_data = (state == SEND_CRC32) ? crc32[7:0] : ds[63:56];
 
 reg			[63:0]		ds;
-reg			[4:0]			ds_cnt;
-reg			[4:0]			ds_len;
+reg			[15:0]		ds_cnt;
 always_ff @ (posedge clk or negedge rst_n) begin
 	if(rst_n == 1'b0) begin
 		ds <= 64'd0;
-		ds_cnt <= 5'd0;
-		ds_len <= 5'd0;
+		ds_cnt <= 16'd0;
 	end
 	else begin
 		if(new_state != state) begin
@@ -131,11 +116,11 @@ always_ff @ (posedge clk or negedge rst_n) begin
 				SEND_CRC32: ds <= 64'd0;
 				DELAY: ds <= 64'd0;
 			endcase
-			ds_cnt <= 5'd1;
+			ds_cnt <= 16'd1;
 		end 
 		else begin
 			ds <= {ds[55:0], 8'h00};
-			ds_cnt <= ds_cnt + 5'd1;
+			ds_cnt <= ds_cnt + 16'd1;
 		end
 	end
 end

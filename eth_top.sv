@@ -22,7 +22,8 @@ wire						udp_tx_data_en;
 
 always_comb
 	case(state)
-		START_UDP_PACKET, SEND_UDP_PACKET: begin
+		START_UDP_PACKET, SEND_UDP_PACKET,
+		start_udp, send_udp: begin
 			eth_tx_data = udp_tx_data;
 			eth_tx_data_en = udp_tx_data_en;
 		end 
@@ -126,7 +127,7 @@ assign LEDG[8:5] = arp_rdy_cntr;
 // ===========================================================================
 
 wire						udp_sender_ready;
-
+/*
 udp_pkt_gen udp_pkt_gen_unit1(
 	.rst_n(rst_n),
 	.clk(eth_tx_clk),
@@ -137,21 +138,32 @@ udp_pkt_gen udp_pkt_gen_unit1(
 	.i_enable((state == START_UDP_PACKET) ? 1'b1 : 1'b0),
 	.o_ready(udp_sender_ready)
 );
-/*
+*/
+
+parameter	[47:0]	pegatron_mac = {8'h0c, 8'h54, 8'ha5, 8'h31, 8'h24, 8'h85};
+
 udp_send udp_send_unit(
-	.clk(eth_tx_clk),
 	.rst_n(rst_n),
+	.clk(eth_tx_clk),
 	
 	.o_data(udp_tx_data),
 	.o_tx_en(udp_tx_data_en),
 	
+	.i_dst_mac(pegatron_mac),
+	.i_src_mac(self_mac),
+	
+	.i_src_ip(self_ip),
+	.i_dst_ip(target_ip),
+	
+	.i_src_port(50000),
+	.i_dst_port(50016),
+	
 	.i_data_len(16'd1024),
 	
-	.i_enable((state == START_UDP_PACKET) ? 1'b1 : 1'b0),
+	.i_enable((state == START_UDP_PACKET || state == start_udp) ? 1'b1 : 1'b0),
 	.o_ready(udp_sender_ready)
 );
-*/
- 
+
 // ===========================================================================
 // ETHERNET RECEIVE ANY PACKETS
 // ===========================================================================
@@ -248,7 +260,9 @@ enum logic [3:0] {
 	SEND_ARP_PERIODIC = 4'd8,
 	START_UDP_PACKET = 4'd9,
 	SEND_UDP_PACKET = 4'd10,
-	IDLE_MODE = 4'd11
+	IDLE_MODE = 4'd11,
+	start_udp = 4'd12,
+	send_udp = 4'd13
 } state, new_state;
 
 //----------------------------------------------------------------------------
@@ -294,7 +308,10 @@ always_comb begin
 		SEND_ARP_PERIODIC: if(arp_sender_ready == 1'b1) new_state = IDLE_MODE;
 		
 		START_UDP_PACKET: if(udp_sender_ready == 1'b0) new_state = SEND_UDP_PACKET;				
-		SEND_UDP_PACKET: if(udp_sender_ready == 1'b1) new_state = IDLE_MODE;
+		SEND_UDP_PACKET: if(udp_sender_ready == 1'b1) new_state = start_udp; //IDLE_MODE;
+		
+		start_udp: if(udp_sender_ready == 1'b0) new_state = send_udp;
+		send_udp: if(udp_sender_ready == 1'b1) new_state = IDLE_MODE;
 		
 		IDLE_MODE: begin
 			if(idle_mode_counter == 32'd125000000 && udp_sender_ready == 1'b1)
@@ -359,7 +376,8 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	if(1'b0 == rst_n)
 		prev_arp_req_flag <= 1'b0;
 	else
-		if(new_state != state && state == START_ARP_RESPONSE)
+		if(new_state != state && (state == START_ARP_RESPONSE ||
+				state == SEND_ARP_REQUEST))
 			prev_arp_req_flag <= arp_req_flag;
 		
 reg			[0:0]			arp_req_flag;
