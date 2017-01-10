@@ -179,7 +179,7 @@ calc_crc32 u_crc32(
 	.rst_n(rst_n),
 	.clk(clk),
 	.i_calc(calc_crc_flag),
-	.i_vl(tx_en),
+	.i_vl(o_tx_en),
 	.i_data(o_data),
 	.o_crc32(crc32)
 );

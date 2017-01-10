@@ -10,7 +10,13 @@ module eth_top(
 
 	input					eth_tx_clk,
 	output	[7:0]		eth_tx_data,
-	output				eth_tx_data_en
+	output				eth_tx_data_en,
+	
+	output				awb_rst_n,
+	input					awb_clk,
+	output				awb_sync,		// Synchro
+	input		[12:0]	awb_data,
+	output				awb_rdy
 );
 
 // ===========================================================================
@@ -134,20 +140,8 @@ reg			[0:0]		udp_sender_ready;
 wire						usen;
 assign usen = (state == START_UDP_PACKET || state == start_udp) ? 1'b1 : 1'b0;
 
-/*
-udp_pkt_gen udp_pkt_gen_unit1(
-	.rst_n(rst_n),
-	.clk(eth_tx_clk),
-	
-	.o_data(udp_tx_data),
-	.tx_en(udp_tx_data_en),
-	
-	.i_enable((state == START_UDP_PACKET) ? 1'b1 : 1'b0),
-	.o_ready(usr)
-);
-*/
-
-//parameter	[47:0]	pegatron_mac = {8'h0c, 8'h54, 8'ha5, 8'h31, 8'h24, 8'h85};
+reg			[7:0]			dd_cnt;
+always_ff @ (posedge eth_tx_clk) dd_cnt <= dd_cnt + 8'd1;
 
 udp_send udp_send_unit(
 	.rst_n(rst_n),
@@ -165,6 +159,7 @@ udp_send udp_send_unit(
 	.i_src_port(50000),
 	.i_dst_port(50016),
 	
+	.i_in_data(dd_cnt),
 	.i_data_len(16'd64),
 	
 	.i_enable(usen),
@@ -271,9 +266,6 @@ enum logic [3:0] {
 	start_udp = 4'd12,
 	send_udp = 4'd13
 } state, new_state;
-
-// assign LEDR[3:0] = state;
-// assign LEDR[7:4] = new_state;
 
 //----------------------------------------------------------------------------
 

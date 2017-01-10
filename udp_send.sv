@@ -25,6 +25,7 @@ module udp_send(
 // READY
 // ===========================================================================
 assign o_ready = (state == IDLE) ? 1'b1 : 1'b0;
+assign o_rd = (state == SEND_UDP_DATA) ? 1'b1 : 1'b0;
 
 // ===========================================================================
 // IP/UDP parameters & header
@@ -117,7 +118,7 @@ assign o_tx_en = (state > ETH_START && state < DELAY) ? 1'b1 : 1'b0;
 // ===========================================================================
 //	DATA SHIFT & SEND
 // ===========================================================================
-assign o_data = (state == SEND_CRC32) ? crc32[7:0] : ds[63:56];
+assign o_data = (state == SEND_CRC32) ? crc32[7:0] : ((state == SEND_UDP_DATA) ? i_in_data : ds[63:56]);
 
 reg			[63:0]		ds;
 reg			[15:0]		ds_cnt;
@@ -177,7 +178,6 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 wire		[31:0]		crc32;
-assign o_crc32 = crc32;
 
 calc_crc32 u_crc32(
 	.rst_n(rst_n),
