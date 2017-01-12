@@ -12,11 +12,14 @@ module eth_top(
 	output	[7:0]		eth_tx_data,
 	output				eth_tx_data_en,
 	
-	output				awb_rst_n,
-	input					awb_clk,
-	output				awb_sync,		// Synchro
-	input		[12:0]	awb_data,
-	output				awb_rdy
+	output				o_send_sync,
+	input		[7:0]		i_send_data,
+	output				o_send_rd,
+	
+	output	[31:0]	o_cmd_data,
+	output				o_cmd_vld,
+	input					i_cmd_rdy
+
 );
 
 // ===========================================================================
@@ -50,8 +53,8 @@ always_comb
 // PARAMETERS
 // ===========================================================================
 parameter	[47:0]	self_mac = {8'h00, 8'h23, 8'h54, 8'h3C, 8'h47, 8'h1B};
-parameter	[31:0]	self_ip = {8'h0A, 8'h00, 8'h00, 8'h21};
-parameter	[31:0]	target_ip = {8'h0A, 8'h00, 8'h00, 8'h02};
+parameter	[31:0]	self_ip = {8'd192, 8'd168, 8'd1, 8'd131};		// {8'h0A, 8'h00, 8'h00, 8'h21};
+parameter	[31:0]	target_ip = {8'd192, 8'd168, 8'd1, 8'd211}; 	// {8'h0A, 8'h00, 8'h00, 8'h02};
 
 // ===========================================================================
 // SEND ARP PACKET
@@ -140,8 +143,8 @@ reg			[0:0]		udp_sender_ready;
 wire						usen;
 assign usen = (state == START_UDP_PACKET || state == start_udp) ? 1'b1 : 1'b0;
 
-reg			[7:0]			dd_cnt;
-always_ff @ (posedge eth_tx_clk) dd_cnt <= dd_cnt + 8'd1;
+//reg			[7:0]			dd_cnt;
+//always_ff @ (posedge eth_tx_clk) dd_cnt <= dd_cnt + 8'd1;
 
 udp_send udp_send_unit(
 	.rst_n(rst_n),
@@ -159,8 +162,9 @@ udp_send udp_send_unit(
 	.i_src_port(50000),
 	.i_dst_port(50016),
 	
-	.i_in_data(dd_cnt),
-	.i_data_len(16'd64),
+	.i_in_data(i_send_data), // dd_cnt),
+	.o_rd(o_send_rd),
+	.i_data_len(16'd1040),
 	
 	.i_enable(usen),
 	.o_ready(udp_sender_ready)
@@ -176,6 +180,10 @@ wire			[47:0]	recv_SHA;
 wire			[31:0]	recv_SPA;
 wire			[47:0]	recv_THA;
 wire			[31:0]	recv_TPA;
+
+wire			[15:0]	recv_src_port;
+wire			[15:0]	recv_dst_port;
+wire			[31:0]	recv_udp_cmd;
 
 eth_recv eth_recv_unit1(
 	.rst_n(rst_n),
@@ -195,7 +203,11 @@ eth_recv eth_recv_unit1(
 	.o_SHA(recv_SHA),	// reaceive param's from ARP Reqest
 	.o_SPA(recv_SPA),
 	.o_THA(recv_THA),
-	.o_TPA(recv_TPA)
+	.o_TPA(recv_TPA),
+	
+	.o_src_port(recv_src_port),	// UDP
+	.o_dst_port(recv_dst_port),
+	.o_udp_cmd(recv_udp_cmd)
 );
 
 reg		[1:0]		prev_pkt_type;
@@ -217,6 +229,13 @@ assign LEDG[0] = arp_resp_cntr[0];
 assign LEDG[1] = arp_req_cntr[0];
 assign LEDG[2] = udp_cntr[0];
 
+reg			[31:0]	udp_cmd;
+assign LEDR = udp_cmd[17:0];
+reg			[0:0]		udp_cmd_latch;
+
+assign o_cmd_data = udp_cmd;
+assign o_cmd_vld = udp_cmd_latch;
+
 always_ff @ (posedge eth_rx_clk or negedge rst_n)
 	if(1'b0 == rst_n) begin
 		save_SHA <= 48'd0;
@@ -225,11 +244,18 @@ always_ff @ (posedge eth_rx_clk or negedge rst_n)
 		save_TPA <= 32'd0;
 		arp_resp_cntr <= 9'd0;
 		arp_req_cntr <= 9'd0;
+		udp_cmd_latch <= 1'b0;
 	end
 	else 
 		if(prev_pkt_type != recv_pkt_type) begin
 			case(recv_pkt_type)
-				eth_recv.UDP: udp_cntr <= udp_cntr + 9'd1;
+				eth_recv.UDP: begin
+					udp_cntr <= udp_cntr + 9'd1;
+					if(recv_src_port == 16'd50016 && recv_dst_port == 16'd17584) begin
+						udp_cmd <= recv_udp_cmd;
+						udp_cmd_latch <= 1'b1;
+					end
+				end
 				eth_recv.ARP_REQ: begin
 					if(recv_TPA == self_ip) begin
 						arp_req_cntr <= arp_req_cntr + 9'd1;
@@ -244,8 +270,39 @@ always_ff @ (posedge eth_rx_clk or negedge rst_n)
 						arp_resp_cntr <= arp_resp_cntr + 9'd1;
 					end
 				end
+				default:
+					udp_cmd_latch <= 1'b0;
 			endcase
 		end
+		else
+			if(i_cmd_rdy == 1'b1)
+				udp_cmd_latch <= 1'b0;
+		
+		
+// ===========================================================================
+// SYNC FLAG
+// ===========================================================================
+reg			[0:0]		sync_flag;
+reg			[8:0]		sf_cnt;
+always_ff @ (posedge eth_tx_clk or negedge rst_n)
+	if(1'b0 == rst_n) begin
+		sync_flag <= 1'b0;
+		sf_cnt <= 8'd0;
+	end
+	else
+		if(sync_flag == 1'b0) begin
+			if(new_state != state && state == SEND_UDP_PACKET) begin
+				sync_flag <= 1'b1;
+				sf_cnt <= 8'h00;
+			end
+		end
+		else 
+			if(sf_cnt != 8'hFF)
+				sf_cnt <= sf_cnt + 8'h01;
+			else
+				sync_flag = 1'b0;
+				
+assign o_send_sync = ~sync_flag;
 
 // ===========================================================================
 // STATE MACHINE
@@ -317,13 +374,13 @@ always_comb begin
 		SEND_ARP_PERIODIC: if(arp_sender_ready == 1'b1) new_state = IDLE_MODE;
 		
 		START_UDP_PACKET: if(udp_sender_ready == 1'b0) new_state = SEND_UDP_PACKET;
-		SEND_UDP_PACKET: if(udp_sender_ready == 1'b1) new_state = start_udp; //IDLE_MODE;
+		SEND_UDP_PACKET: if(udp_sender_ready == 1'b1) new_state = IDLE_MODE; //start_udp;
 		
 		start_udp: if(udp_sender_ready == 1'b0) new_state = send_udp;
 		send_udp: if(udp_sender_ready == 1'b1) new_state = IDLE_MODE;
 		
 		IDLE_MODE: begin
-			if(idle_mode_counter == 32'd125000000 && udp_sender_ready == 1'b1)
+			if(idle_mode_counter == 32'd1250000 && udp_sender_ready == 1'b1)
 				new_state = START_UDP_PACKET;
 			else
 				if(prev_arp_req_flag != cc_arp_req_flag && arp_sender_ready == 1'b1)
@@ -357,7 +414,7 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	else
 	begin
 		if(state == IDLE_MODE) begin
-			if(idle_mode_counter != 32'd125000000)	// 1 sec
+			if(idle_mode_counter != 32'd1250000)	// 1 sec
 				idle_mode_counter <= idle_mode_counter + 32'd1;
 		end
 		else

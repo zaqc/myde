@@ -24,13 +24,16 @@ module eth_recv(
 	output	[1:0]		o_pkt_type,	// NONE=0, ARP_REQ=1, ARP_RESP=2 or UDP=3
 	
 	output	[7:0]		o_data,		// stream for UDP data
-	output				o_data_vl
+	output				o_data_vl,
 	
+	output	[31:0]	o_udp_cmd
 );
 
-assign o_data_vl = (state > RECV_PREAMBLE && state <= CRC32_ERR) ? 1'b1 : 1'b0;
-assign o_data = (state == RECV_CRC32) ? crc32[7:0] : 
-	((state == CRC32_ERR || state == CRC32_OK) ? { 6'd0, pkt_type } : state);
+reg			[31:0]	udp_cmd;
+assign o_udp_cmd = udp_cmd;
+
+assign o_data_vl = (state == RECV_UDP_DATA && i_data_vl == 1'b1) ? 1'b1 : 1'b0;
+assign o_data = i_data;
 
 // ===========================================================================
 // Output PACKET TYPE
@@ -174,7 +177,7 @@ always_ff @ (posedge clk or negedge rst_n)
 			else
 				if(1'b1 == i_data_vl)
 					rx_count <= rx_count + 11'd1;
-				
+					
 //----------------------------------------------------------------------------
 				
 always_ff @ (posedge clk or negedge rst_n)
@@ -183,9 +186,9 @@ always_ff @ (posedge clk or negedge rst_n)
 	else
 		if(state == STATE_IDLE)
 			rx <= 64'd0;
-		else
+		else 
 			if(1'b1 == i_data_vl)
-					rx <= {rx[55:0], i_data};
+				rx <= {rx[55:0], i_data};
 
 // ===========================================================================
 // STORE DATA TO REG'S
@@ -290,6 +293,7 @@ always_ff @ (posedge clk or negedge rst_n) begin
 				RECV_UDP_SRC_PORT: udp_src_port <= rx[15:0];
 				RECV_UDP_DST_PORT: udp_dst_port <= rx[15:0];
 				RECV_UDP_LEN: udp_len <= rx[15:0];
+								
 				RECV_UDP_CRC: udp_crc <= rx[15:0];
 				
 				RECV_ARP_HEADER: arp_header <= rx[63:0];
@@ -298,6 +302,10 @@ always_ff @ (posedge clk or negedge rst_n) begin
 				RECV_ARP_THA: arp_THA <= rx[47:0];
 				RECV_ARP_TPA: arp_TPA <= rx[31:0];
 			endcase
+		end
+		else begin
+			if(state == RECV_UDP_DATA && rx_count == 11'd4)
+				udp_cmd <= rx[31:0];
 		end
 	end
 end
