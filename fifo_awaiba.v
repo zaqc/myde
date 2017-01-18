@@ -4,6 +4,7 @@ module fifo_awaiba(
 	data,		//13 bit data from connector
 	ready,		//ready to connector
 	valid,		//valid from connector
+	address,
 //system interface
 	clk,		//data clock from system (125 MHz)
 	reset_n,	//system reset
@@ -17,6 +18,8 @@ input			clk_data;
 input	[12:0]	data;
 output			ready;
 input			valid;
+output	[1:0]	address;
+reg		[1:0]	address;
 input			clk;
 input			reset_n;
 input			sync;
@@ -25,6 +28,24 @@ output			valid_out;
 input			ready_sys;
 
 wire	wr_full;
+reg		valid_tmp;
+wire	valid_fall;
+
+assign	valid_fall = ({valid,valid_tmp} == 2'b01);
+
+always@(posedge clk_data or negedge reset_n)
+begin
+	if (~reset_n) {address,valid_tmp} <= 3'b000;
+	else
+	begin
+		valid_tmp <= valid;
+		casex ({sync,valid_fall})
+			2'b0x: address <= 0;
+			2'b11: address <= address + 1'b1;
+			2'b10: address <= address;
+		endcase
+	end
+end
 
 assign	ready = ~wr_full;
 

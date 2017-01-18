@@ -64,6 +64,10 @@ assign GPIO[24] = awb_rdy;
 wire					awb_vld;
 assign awb_vld = GPIO[25];
 
+wire		[1:0]		awb_address;
+assign GPIO[8] = awb_address[0];
+assign GPIO[7] = awb_address[1];
+
 //wire					awb_rst_n;
 assign GPIO[9] = (KEY[0] == 1'b0) ? 1'b0 : 1'b1; //awb_rst_n;
 //assign awb_rst_n = ;
@@ -79,6 +83,8 @@ fifo_awaiba fifo_awaiba_unit(
 	.data(awb_data),
 	.ready(awb_rdy),
 	.valid(awb_vld),
+	
+	.address(awb_address),
 	
 	.clk(pll_clk_tx),	// 125 MHz
 	.reset_n(rst_n),
@@ -131,9 +137,9 @@ spi_awaiba spi_awaiba_unit(
 	.spi_abn_cdp(spi_abn_cdp)
 );
 
-reg		[31:0]		awb_cnt;
-always @ (posedge awb_sync_ready) awb_cnt <= awb_cnt + 32'd1;
-assign LEDR = awb_cnt[17:0];
+//reg		[31:0]		awb_cnt;
+//always @ (posedge awb_sync_ready) awb_cnt <= awb_cnt + 32'd1;
+//assign LEDR = awb_cnt[17:0];
 
 //----------------------------------------------------------------------------
 

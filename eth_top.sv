@@ -166,7 +166,7 @@ udp_send udp_send_unit(
 	
 	.i_in_data(i_send_data), // dd_cnt),
 	.o_rd(o_send_rd),
-	.i_data_len(16'd1040),
+	.i_data_len(16'd4160),
 	
 	.i_enable(usen),
 	.o_ready(udp_sender_ready)
@@ -382,7 +382,7 @@ always_comb begin
 		send_udp: if(udp_sender_ready == 1'b1) new_state = IDLE_MODE;
 		
 		IDLE_MODE: begin
-			if(idle_mode_counter == 32'd1250000 && udp_sender_ready == 1'b1)
+			if(idle_mode_counter == 32'd250000 && udp_sender_ready == 1'b1)
 				new_state = START_UDP_PACKET;
 			else
 				if(prev_arp_req_flag != cc_arp_req_flag && arp_sender_ready == 1'b1)
@@ -416,7 +416,7 @@ always_ff @ (posedge eth_tx_clk or negedge rst_n)
 	else
 	begin
 		if(state == IDLE_MODE) begin
-			if(idle_mode_counter != 32'd1250000)	// 1 sec
+			if(idle_mode_counter != 32'd250000)	// 1 sec
 				idle_mode_counter <= idle_mode_counter + 32'd1;
 		end
 		else
